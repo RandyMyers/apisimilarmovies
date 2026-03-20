@@ -26,8 +26,6 @@ const websiteRoutes = require('./routes/websiteRoutes');
 const similarityVoteAdminRoutes = require('./routes/similarityVoteAdminRoutes');
 const adminAuditRoutes = require('./routes/adminAuditRoutes');
 const adminAuthRoutes = require('./routes/adminAuthRoutes');
-const { seedAdminUser } = require('./utils/seedAdminUser');
-const { ensureDefaultMediaTypes } = require('./utils/ensureDefaultMediaTypes');
 const mediaTypeRoutes = require('./routes/mediaTypeRoutes');
 const adminUserRoutes = require('./routes/adminUserRoutes');
 const userAuthRoutes = require('./routes/userAuthRoutes');
@@ -36,7 +34,27 @@ const app = express();
 
 // Basic middleware
 app.set('trust proxy', 1);
-app.use(cors());
+const allowedOrigins = new Set([
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'https://teal-paletas-702712.netlify.app',
+  'https://transcendent-entremet-8bcd5c.netlify.app',
+  ...(process.env.CORS_ALLOWED_ORIGINS
+    ? String(process.env.CORS_ALLOWED_ORIGINS)
+        .split(',')
+        .map((x) => x.trim())
+        .filter(Boolean)
+    : []),
+]);
+app.use(
+  cors({
+    origin(origin, cb) {
+      // Allow non-browser clients (no Origin header) and configured browser origins.
+      if (!origin || allowedOrigins.has(origin)) return cb(null, true);
+      return cb(null, false);
+    },
+  }),
+);
 app.use(express.json({ limit: '2mb' }));
 app.use(morgan('dev'));
 
@@ -94,10 +112,8 @@ const MONGO_URL = process.env.MONGO_URL;
 if (MONGO_URL) {
   mongoose
     .connect(MONGO_URL)
-    .then(async () => {
+    .then(() => {
       console.log('[similarmovies] Connected to MongoDB');
-      await seedAdminUser();
-      await ensureDefaultMediaTypes();
     })
     .catch((err) => {
       console.error('[similarmovies] MongoDB connection error:', err.message);
