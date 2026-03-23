@@ -57,7 +57,7 @@ exports.create = async (req, res) => {
       .lean();
     if (existing) {
       return res.status(409).json({
-        error: `Genre slug already exists: ${existing.slug} (${existing.name || 'unnamed'})`,
+        error: `Genre slug already exists: ${existing.slug} (${existing.name || 'unnamed'}) — siteKey=${existing.siteKey} isActive=${existing.isActive} id=${existing._id}. If it was deleted in the UI, try "Show inactive" or remove this row in MongoDB.`,
       });
     }
 
@@ -77,7 +77,18 @@ exports.create = async (req, res) => {
     });
     return res.status(201).json({ success: true, id: doc._id });
   } catch (err) {
-    if (err.code === 11000) return res.status(409).json({ error: 'Genre slug already exists' });
+    if (err.code === 11000) {
+      const slug = toSlug(req.body?.slug || req.body?.name || '');
+      const dup = await Genre.findOne({ siteKey: GLOBAL_SITE_KEY, slug })
+        .select('slug name siteKey isActive')
+        .lean();
+      if (dup) {
+        return res.status(409).json({
+          error: `Genre slug already exists: ${dup.slug} (${dup.name || 'unnamed'}) — siteKey=${dup.siteKey} isActive=${dup.isActive} id=${dup._id}`,
+        });
+      }
+      return res.status(409).json({ error: 'Genre slug already exists (duplicate key index)' });
+    }
     return res.status(500).json({ error: err.message || 'Failed to create genre' });
   }
 };

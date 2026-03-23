@@ -23,10 +23,18 @@ function readBearerToken(req) {
 
 function authenticateAdmin(req, res, next) {
   const token = readBearerToken(req);
-  if (!token) return res.status(401).json({ error: 'Unauthorized admin request' });
+  if (!token) {
+    // eslint-disable-next-line no-console
+    console.warn('[adminAuth] missing bearer token');
+    return res.status(401).json({ error: 'Unauthorized admin request' });
+  }
 
   const secret = process.env.JWT_SECRET;
-  if (!secret) return res.status(500).json({ error: 'JWT_SECRET not configured' });
+  if (!secret) {
+    // eslint-disable-next-line no-console
+    console.error('[adminAuth] JWT_SECRET not configured');
+    return res.status(500).json({ error: 'JWT_SECRET not configured' });
+  }
 
   try {
     const payload = jwt.verify(token, secret);
@@ -40,7 +48,9 @@ function authenticateAdmin(req, res, next) {
       email: payload?.email ? String(payload.email) : undefined,
     };
     return next();
-  } catch (_err) {
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[adminAuth] jwt verify failed', { message: err?.message || err?.name || err });
     return res.status(401).json({ error: 'Unauthorized admin request' });
   }
 }
@@ -55,6 +65,8 @@ function authorizeRoles(...allowedRoles) {
     const current = roleLevel(role);
     const minAllowed = Math.min(...allowed.map(roleLevel).filter(Boolean));
     if (current < minAllowed) {
+      // eslint-disable-next-line no-console
+      console.warn('[adminAuth] forbidden: insufficient role', { role, allowedRoles });
       return res.status(403).json({ error: 'Forbidden: insufficient role' });
     }
     return next();

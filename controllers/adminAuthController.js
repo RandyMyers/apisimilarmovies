@@ -8,6 +8,9 @@ const { logAdminAction } = require('../utils/adminAudit');
 
 function signToken({ userId, email, role }) {
   const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET not configured');
+  }
   return jwt.sign({ userId, email, role }, secret, { expiresIn: '7d' });
 }
 
@@ -22,14 +25,28 @@ exports.login = async (req, res) => {
     if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
 
     const user = await AdminUser.findOne({ email }).lean();
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!user) {
+      // Don't leak password; log only email.
+      // eslint-disable-next-line no-console
+      console.error('[adminAuth] login failed: user not found', { email });
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
 
     const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!ok) {
+      // eslint-disable-next-line no-console
+      console.error('[adminAuth] login failed: invalid password', { email, siteKey: user.siteKey || 'default' });
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
 
     const token = signToken({ userId: user._id, email: user.email, role: user.role });
     return res.json({ success: true, token, role: user.role, email: user.email });
   } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[adminAuth] login exception', {
+      message: err?.message || err,
+      status: err?.response?.status,
+    });
     return res.status(500).json({ error: err.message || 'Login failed' });
   }
 };

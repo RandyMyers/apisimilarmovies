@@ -3,8 +3,8 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
-const mongoose = require('mongoose');
 
+const { connectToDatabase } = require('./db/mongoConnection');
 const { writeLimiter, voteLimiter } = require('./middleware/rateLimiters');
 const { errorHandler } = require('./middleware/errorHandler');
 const { siteResolver } = require('./middleware/siteResolver');
@@ -32,6 +32,21 @@ const userAuthRoutes = require('./routes/userAuthRoutes');
 
 const app = express();
 
+/** Ensure Mongo is ready before any handler that uses Mongoose (required for Vercel serverless). */
+async function ensureMongoConnection(req, res, next) {
+  try {
+    await connectToDatabase();
+    next();
+  } catch (err) {
+    console.error('[similarmovies] Database connection failed:', err.message);
+    return res.status(503).json({
+      error: 'Database Unavailable',
+      message: 'Service temporarily unavailable. Please try again.',
+      timestamp: new Date().toISOString(),
+    });
+  }
+}
+
 // Basic middleware
 app.set('trust proxy', 1);
 const allowedOrigins = new Set([
@@ -57,6 +72,9 @@ app.use(
 );
 app.use(express.json({ limit: '2mb' }));
 app.use(morgan('dev'));
+
+// Connect before routes / siteResolver (Website.findOne) — avoids Mongoose buffering timeouts on Vercel
+app.use(ensureMongoConnection);
 
 // Multi-site resolver (adds req.siteKey from X-Site header)
 app.use(siteResolver);
@@ -107,25 +125,18 @@ app.use('/api/v1/admin', authenticateAdmin, authorizeRoles('moderator'), adminUs
 // Central error handler (keep last)
 app.use(errorHandler);
 
-// Connect Mongo (required for similarity votes)
-const MONGO_URL = process.env.MONGO_URL;
-if (MONGO_URL) {
-  mongoose
-    .connect(MONGO_URL)
-    .then(() => {
-      console.log('[similarmovies] Connected to MongoDB');
-    })
-    .catch((err) => {
-      console.error('[similarmovies] MongoDB connection error:', err.message);
-    });
-} else {
-  console.warn('[similarmovies] MONGO_URL not set; votes will not persist.');
-}
-
-// Start server (only if run directly)
+// Start server (only if run directly — still pre-connect so first request is fast)
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => console.log(`[similarmovies] API listening on port ${PORT}`));
+  connectToDatabase()
+    .then(() => {
+      app.listen(PORT, () => console.log(`[similarmovies] API listening on port ${PORT}`));
+    })
+    .catch((err) => {
+      console.error('[similarmovies] Failed to connect to MongoDB:', err.message);
+      process.exit(1);
+    });
 }
 
 module.exports = app;
+module.exports.connectToDatabase = connectToDatabase;

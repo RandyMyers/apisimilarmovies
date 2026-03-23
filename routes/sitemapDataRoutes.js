@@ -7,6 +7,7 @@ const sitemapDataController = require('../controllers/sitemapDataController');
 router.get('/media-detail-pages', sitemapDataController.getMediaDetailPagesForSitemap);
 router.get('/static-pages', sitemapDataController.getStaticPagesForSitemap);
 router.get('/regions', sitemapDataController.getRegionsForSitemap);
+router.get('/site', sitemapDataController.getSiteForSitemap);
 
 module.exports = router;
 
