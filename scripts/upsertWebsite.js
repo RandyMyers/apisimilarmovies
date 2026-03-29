@@ -26,7 +26,7 @@ async function main() {
     process.exit(1);
   }
 
-  const domain = (getArg('domain') || 'transcendent-entremet-8bcd5c.netlify.app').trim().toLowerCase();
+  const domain = (getArg('domain') || 'fliqmatch.com').trim().toLowerCase();
   const key = (getArg('key') || 'default').trim().toLowerCase();
   const name = (getArg('name') || `SimiMovies (${domain})`).trim();
 

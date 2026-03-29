@@ -54,6 +54,8 @@ const allowedOrigins = new Set([
   'http://127.0.0.1:3000',
   'https://teal-paletas-702712.netlify.app',
   'https://transcendent-entremet-8bcd5c.netlify.app',
+  'https://fliqmatch.com',
+  'https://www.fliqmatch.com',
   ...(process.env.CORS_ALLOWED_ORIGINS
     ? String(process.env.CORS_ALLOWED_ORIGINS)
         .split(',')
