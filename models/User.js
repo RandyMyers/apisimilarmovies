@@ -4,6 +4,8 @@ const userSchema = new mongoose.Schema(
   {
     siteKey: { type: String, required: true, trim: true, lowercase: true, index: true, default: 'default' },
     email: { type: String, required: true, trim: true, lowercase: true, index: true },
+    /** Public handle; unique per site when set (legacy users may omit until they choose one). */
+    username: { type: String, default: undefined, trim: true, lowercase: true, sparse: true },
     passwordHash: { type: String, required: true },
     displayName: { type: String, default: '', trim: true },
     avatarUrl: { type: String, default: '', trim: true },
@@ -34,6 +36,7 @@ const userSchema = new mongoose.Schema(
 );
 
 userSchema.index({ siteKey: 1, email: 1 }, { unique: true });
+userSchema.index({ siteKey: 1, username: 1 }, { unique: true, sparse: true });
 userSchema.index({ siteKey: 1, isActive: 1, createdAt: -1 });
 
 module.exports = mongoose.model('User', userSchema);

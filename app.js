@@ -29,6 +29,7 @@ const adminAuthRoutes = require('./routes/adminAuthRoutes');
 const mediaTypeRoutes = require('./routes/mediaTypeRoutes');
 const adminUserRoutes = require('./routes/adminUserRoutes');
 const userAuthRoutes = require('./routes/userAuthRoutes');
+const userPublicRoutes = require('./routes/userPublicRoutes');
 
 const app = express();
 
@@ -87,6 +88,7 @@ app.use('/api/health', healthRoutes);
 // TMDB-backed search (for admin wizards + optionally client search)
 app.use('/api/v1/search', searchRoutes);
 app.use('/api/v1', userAuthRoutes);
+app.use('/api/v1', userPublicRoutes);
 
 // Homepage catalog (curated Media or trending fallback)
 app.use('/api/v1/catalog', catalogRoutes);

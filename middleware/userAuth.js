@@ -25,6 +25,7 @@ async function attachUserIfPresent(req) {
   req.user = {
     _id: String(user._id),
     email: user.email,
+    username: user.username || '',
     displayName: user.displayName || '',
   };
 }
