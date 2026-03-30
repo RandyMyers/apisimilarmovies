@@ -7,6 +7,14 @@ const Media = require('../models/Media');
 const UserProfileReport = require('../models/UserProfileReport');
 const { normalizeUsername } = require('../utils/username');
 
+/** Public viewers need publicProfile; the account owner can always see their own page. */
+function canAccessProfile(user, req) {
+  if (user.settings?.publicProfile === true) return true;
+  const vid = req.user?._id;
+  if (vid && String(vid) === String(user._id)) return true;
+  return false;
+}
+
 function posterUrl(path) {
   if (!path) return '';
   if (String(path).startsWith('http')) return path;
@@ -108,7 +116,7 @@ exports.getPublicProfile = async (req, res) => {
 
     const user = await User.findOne({ siteKey, username, deletedAt: null }).lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
-    if (user.settings?.publicProfile !== true) {
+    if (!canAccessProfile(user, req)) {
       return res.status(404).json({ error: 'Profile is private' });
     }
 
@@ -160,7 +168,7 @@ exports.getPublicActivity = async (req, res) => {
 
     const user = await User.findOne({ siteKey, username, deletedAt: null }).lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
-    if (user.settings?.publicProfile !== true) {
+    if (!canAccessProfile(user, req)) {
       return res.status(404).json({ error: 'Profile is private' });
     }
 
@@ -304,7 +312,7 @@ exports.getFollowers = async (req, res) => {
     const username = normalizeUsername(req.params.username);
     const user = await User.findOne({ siteKey, username, deletedAt: null }).lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
-    if (user.settings?.publicProfile !== true) return res.status(404).json({ error: 'Profile is private' });
+    if (!canAccessProfile(user, req)) return res.status(404).json({ error: 'Profile is private' });
 
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 24));
@@ -339,7 +347,7 @@ exports.getFollowing = async (req, res) => {
     const username = normalizeUsername(req.params.username);
     const user = await User.findOne({ siteKey, username, deletedAt: null }).lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
-    if (user.settings?.publicProfile !== true) return res.status(404).json({ error: 'Profile is private' });
+    if (!canAccessProfile(user, req)) return res.status(404).json({ error: 'Profile is private' });
 
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 24));

@@ -160,6 +160,17 @@ exports.updateMe = async (req, res) => {
 
     if (req.body?.displayName != null) patch.displayName = String(req.body.displayName || '').trim();
     if (req.body?.avatarUrl != null) patch.avatarUrl = String(req.body.avatarUrl || '').trim();
+
+    if (req.body?.avatarDataUrl != null && String(req.body.avatarDataUrl).trim() !== '') {
+      const raw = String(req.body.avatarDataUrl || '').trim();
+      if (!/^data:image\/(jpeg|jpg|png|webp|gif);base64,/i.test(raw)) {
+        return res.status(400).json({ error: 'Avatar must be a JPEG, PNG, WebP, or GIF image.' });
+      }
+      if (raw.length > 600000) {
+        return res.status(400).json({ error: 'Avatar image is too large. Try a smaller file.' });
+      }
+      patch.avatarUrl = raw;
+    }
     if (req.body?.locale != null) patch.locale = String(req.body.locale || 'en-US').trim();
     if (req.body?.timezone != null) patch.timezone = String(req.body.timezone || '').trim();
 
