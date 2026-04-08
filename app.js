@@ -30,6 +30,14 @@ const mediaTypeRoutes = require('./routes/mediaTypeRoutes');
 const adminUserRoutes = require('./routes/adminUserRoutes');
 const userAuthRoutes = require('./routes/userAuthRoutes');
 const userPublicRoutes = require('./routes/userPublicRoutes');
+const adRoutes = require('./routes/adRoutes');
+const adminAdCampaignRoutes = require('./routes/adminAdCampaignRoutes');
+const adminAdCreativeRoutes = require('./routes/adminAdCreativeRoutes');
+const adminAdAnalyticsRoutes = require('./routes/adminAdAnalyticsRoutes');
+const adminAdMediaRoutes = require('./routes/adminAdMediaRoutes');
+const { requireSiteForAds } = require('./middleware/requireSiteForAds');
+const { parseAdContext } = require('./middleware/parseAdContext');
+const { startDailyRollupScheduler } = require('./services/adDailyRollupService');
 
 const app = express();
 
@@ -71,6 +79,15 @@ app.use(
       if (!origin || allowedOrigins.has(origin)) return cb(null, true);
       return cb(null, false);
     },
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Requested-With',
+      'X-Site',
+      'X-Locale',
+      'X-Country-Code',
+    ],
   }),
 );
 app.use(express.json({ limit: '2mb' }));
@@ -81,6 +98,9 @@ app.use(ensureMongoConnection);
 
 // Multi-site resolver (adds req.siteKey from X-Site header)
 app.use(siteResolver);
+
+// Public ads (per-tenant via X-Site → Website)
+app.use('/api/v1/ads', requireSiteForAds, parseAdContext, adRoutes);
 
 // Health
 app.use('/api/health', healthRoutes);
@@ -126,6 +146,11 @@ app.use('/api/v1/admin', authenticateAdmin, authorizeRoles('moderator'), adminAu
 app.use('/api/v1/admin', authenticateAdmin, authorizeRoles('editor'), mediaTypeRoutes);
 app.use('/api/v1/admin', authenticateAdmin, authorizeRoles('moderator'), adminUserRoutes);
 
+app.use('/api/v1/admin/ads/creatives', authenticateAdmin, authorizeRoles('moderator'), adminAdCreativeRoutes);
+app.use('/api/v1/admin/ads/campaigns', authenticateAdmin, authorizeRoles('moderator'), adminAdCampaignRoutes);
+app.use('/api/v1/admin/ads/analytics', authenticateAdmin, authorizeRoles('moderator'), adminAdAnalyticsRoutes);
+app.use('/api/v1/admin/ads/media', authenticateAdmin, authorizeRoles('moderator'), adminAdMediaRoutes);
+
 // Central error handler (keep last)
 app.use(errorHandler);
 
@@ -134,6 +159,9 @@ if (require.main === module) {
   const PORT = process.env.PORT || 5000;
   connectToDatabase()
     .then(() => {
+      if (process.env.AD_ROLLUP_SCHEDULER === '1') {
+        startDailyRollupScheduler();
+      }
       app.listen(PORT, () => console.log(`[similarmovies] API listening on port ${PORT}`));
     })
     .catch((err) => {

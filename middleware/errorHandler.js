@@ -1,3 +1,7 @@
+function asyncHandler(fn) {
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
 function errorHandler(err, req, res, next) {
   // eslint-disable-next-line no-unused-vars
   const _next = next;
@@ -6,12 +10,16 @@ function errorHandler(err, req, res, next) {
   const message =
     typeof err?.message === 'string' && err.message.trim() ? err.message.trim() : 'Internal server error';
 
-  // Avoid leaking stack traces to clients by default
-  const payload = { error: message };
+  const payload = {
+    error: message,
+    message,
+    success: status < 400,
+  };
+  if (status >= 400) payload.success = false;
   if (process.env.NODE_ENV === 'development') payload.stack = err?.stack;
 
   res.status(status).json(payload);
 }
 
-module.exports = { errorHandler };
+module.exports = { errorHandler, asyncHandler };
 
