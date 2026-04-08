@@ -54,7 +54,8 @@ const adCampaignSchema = new mongoose.Schema(
 );
 
 adCampaignSchema.index({ website: 1, status: 1, startAt: 1, endAt: 1 });
-adCampaignSchema.index({ website: 1, 'targeting.pages': 1, 'targeting.placements': 1 });
+adCampaignSchema.index({ website: 1, 'targeting.pages': 1 });
+adCampaignSchema.index({ website: 1, 'targeting.placements': 1 });
 adCampaignSchema.index({ website: 1, 'targeting.countries': 1 });
 adCampaignSchema.index({ 'creatives.creative': 1 });
 

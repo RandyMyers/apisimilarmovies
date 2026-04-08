@@ -9,6 +9,7 @@
     "check:genres": "node scripts/checkGenres.js",
     "sync:genre-indexes": "node scripts/syncGenreIndexes.js",
     "seed:solo-leveling": "node scripts/seedSoloLevelingSimilar.js",
+    "seed:modamai-ads": "node scripts/seedFliqmatchModaMaiAds.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
