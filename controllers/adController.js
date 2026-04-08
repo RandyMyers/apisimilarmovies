@@ -18,6 +18,20 @@ const hasMatch = (ruleValues = [], value = '') => {
   return ruleValues.includes(String(value).trim().toLowerCase());
 };
 
+const DEBUG_ADS = process.env.DEBUG_ADS === '1';
+
+function targetingCheckSummary(targeting, { page, placement, domain, locale, country, device }) {
+  const t = targeting || {};
+  return {
+    pages: hasMatch(t.pages, page),
+    placements: hasMatch(t.placements, placement),
+    domains: hasMatch(t.domains, domain),
+    locales: hasMatch(t.locales, locale),
+    countries: hasMatch(t.countries, country),
+    devices: hasMatch(t.devices, device),
+  };
+}
+
 const pickCreative = (creatives = []) => {
   if (!Array.isArray(creatives) || creatives.length === 0) return null;
   const row = creatives.find((c) => c.isDefault) || creatives[0] || null;
@@ -95,6 +109,39 @@ exports.getPlacements = asyncHandler(async (req, res) => {
       targeting: campaign.targeting || {},
     }))
     .filter((x) => x.creative && x.creative.destinationUrl);
+
+  if (DEBUG_ADS) {
+    const siteKey = String(req.siteKey || '').trim();
+    console.log('[DEBUG_ADS] GET /placements context', {
+      siteKey,
+      websiteId: String(websiteId),
+      query: { page, placement, domain, locale, device, country, limit },
+    });
+    console.log('[DEBUG_ADS] campaigns from DB (active + schedule):', campaigns.length);
+    campaigns.slice(0, 30).forEach((c) => {
+      const checks = targetingCheckSummary(c.targeting, { page, placement, domain, locale, country, device });
+      const targetingOk = Object.values(checks).every(Boolean);
+      const cr = pickCreative(c.creatives);
+      const crOk = !!(cr && cr.destinationUrl);
+      console.log('[DEBUG_ADS] campaign row', {
+        id: String(c._id),
+        name: c.name,
+        status: c.status,
+        priority: c.priority,
+        targeting: c.targeting || {},
+        targetingChecks: checks,
+        targetingOk,
+        creativesLength: Array.isArray(c.creatives) ? c.creatives.length : 0,
+        creativePopulated: !!(c.creatives && c.creatives[0] && typeof c.creatives[0].creative === 'object'),
+        creativeOk: crOk,
+        inResponse: targetingOk && crOk,
+      });
+    });
+    if (campaigns.length > 30) {
+      console.log('[DEBUG_ADS] … truncated campaign logs (max 30)');
+    }
+    console.log('[DEBUG_ADS] placements returned after filter:', data.length);
+  }
 
   res.status(200).json({ success: true, data });
 });
