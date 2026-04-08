@@ -21,6 +21,8 @@ exports.list = async (req, res) => {
         isActive: s.isActive,
         defaultRegion: s.defaultRegion,
         supportedRegions: s.supportedRegions || [],
+        adsStaticEnabled: Boolean(s.adsStaticEnabled),
+        adsManagedEnabled: Boolean(s.adsManagedEnabled),
         updatedAt: s.updatedAt,
       })),
     });
@@ -46,6 +48,9 @@ exports.create = async (req, res) => {
     if (!key) return res.status(400).json({ error: 'key is required' });
     if (!name) return res.status(400).json({ error: 'name is required' });
 
+    const adsStaticEnabled = req.body?.adsStaticEnabled != null ? Boolean(req.body.adsStaticEnabled) : false;
+    const adsManagedEnabled = req.body?.adsManagedEnabled != null ? Boolean(req.body.adsManagedEnabled) : false;
+
     const doc = await Website.create({
       key,
       name,
@@ -53,6 +58,8 @@ exports.create = async (req, res) => {
       isActive,
       defaultRegion,
       supportedRegions,
+      adsStaticEnabled,
+      adsManagedEnabled,
     });
     await logAdminAction(req, {
       action: 'website.create',
@@ -83,6 +90,8 @@ exports.update = async (req, res) => {
         ? req.body.supportedRegions.map(normalizeKey).filter(Boolean)
         : [];
     }
+    if (req.body?.adsStaticEnabled != null) patch.adsStaticEnabled = Boolean(req.body.adsStaticEnabled);
+    if (req.body?.adsManagedEnabled != null) patch.adsManagedEnabled = Boolean(req.body.adsManagedEnabled);
 
     const doc = await Website.findByIdAndUpdate(id, { $set: patch }, { new: true });
     if (!doc) return res.status(404).json({ error: 'Not found' });

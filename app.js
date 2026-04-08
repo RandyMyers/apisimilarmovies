@@ -37,6 +37,7 @@ const adminAdAnalyticsRoutes = require('./routes/adminAdAnalyticsRoutes');
 const adminAdMediaRoutes = require('./routes/adminAdMediaRoutes');
 const { requireSiteForAds } = require('./middleware/requireSiteForAds');
 const { parseAdContext } = require('./middleware/parseAdContext');
+const publicSiteRoutes = require('./routes/publicSiteRoutes');
 const { startDailyRollupScheduler } = require('./services/adDailyRollupService');
 
 const app = express();
@@ -98,6 +99,9 @@ app.use(ensureMongoConnection);
 
 // Multi-site resolver (adds req.siteKey from X-Site header)
 app.use(siteResolver);
+
+// Public per-site settings (no auth; uses X-Site → Website)
+app.use('/api/v1/public', publicSiteRoutes);
 
 // Public ads (per-tenant via X-Site → Website)
 app.use('/api/v1/ads', requireSiteForAds, parseAdContext, adRoutes);

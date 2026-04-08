@@ -10,6 +10,7 @@
     "sync:genre-indexes": "node scripts/syncGenreIndexes.js",
     "seed:solo-leveling": "node scripts/seedSoloLevelingSimilar.js",
     "seed:modamai-ads": "node scripts/seedFliqmatchModaMaiAds.js",
+    "check:ads-health": "node scripts/checkAdsCampaignHealth.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
