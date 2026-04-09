@@ -17,6 +17,8 @@ const adCreativeSchema = new mongoose.Schema(
     title: { type: String, trim: true, maxlength: 200, default: '' },
     description: { type: String, trim: true, maxlength: 1000, default: '' },
     imageUrl: { type: String, trim: true, default: '' },
+    /** Set when image was uploaded via admin → Cloudinary (for reference / future cleanup). */
+    cloudinaryPublicId: { type: String, trim: true, maxlength: 512, default: '' },
     imageWidth: { type: Number, min: 1, default: null },
     imageHeight: { type: Number, min: 1, default: null },
     ctaLabel: { type: String, trim: true, maxlength: 100, default: '' },

@@ -2,6 +2,12 @@ const { getCloudinary, isCloudinaryReady } = require('../config/cloudinary');
 
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
+function normalizeImageMimetype(mimetype) {
+  const t = String(mimetype || '').toLowerCase().trim();
+  if (t === 'image/jpg' || t === 'image/pjpeg') return 'image/jpeg';
+  return t;
+}
+
 function uploadAdCreativeBuffer(buffer, { mimetype } = {}) {
   if (!isCloudinaryReady()) {
     const err = new Error(
@@ -15,9 +21,11 @@ function uploadAdCreativeBuffer(buffer, { mimetype } = {}) {
     err.statusCode = 400;
     throw err;
   }
-  const type = String(mimetype || '').toLowerCase();
+  const type = normalizeImageMimetype(mimetype);
   if (!ALLOWED_MIME.has(type)) {
-    const err = new Error('Only JPEG, PNG, WebP, and GIF images are allowed');
+    const err = new Error(
+      `Only JPEG, PNG, WebP, and GIF images are allowed (received: ${mimetype || 'unknown'})`,
+    );
     err.statusCode = 400;
     throw err;
   }

@@ -14,6 +14,7 @@ const mongoose = require('mongoose');
 
 const Website = require('../models/Website');
 const AdCampaign = require('../models/AdCampaign');
+require('../models/AdCreative');
 
 function getArg(name, fallback = '') {
   const prefix = `--${name}=`;

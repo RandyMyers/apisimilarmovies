@@ -216,7 +216,8 @@ async function upsertModaMaiCardsCampaign({
         countries: [],
         devices: ['desktop', 'mobile', 'tablet'],
         pages: ['home'],
-        placements: ['cards'],
+        // Cards = PromoGridHome; top-banner = strip under stats (same creative can serve both)
+        placements: ['cards', 'top-banner'],
       },
       creatives,
     },

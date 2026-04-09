@@ -8,7 +8,7 @@ router.get('/status', mediaStatus);
 router.post(
   '/upload',
   fileUpload({
-    limits: { fileSize: 5 * 1024 * 1024 },
+    limits: { fileSize: 10 * 1024 * 1024 },
     abortOnLimit: true,
     useTempFiles: false,
     createParentPath: false,

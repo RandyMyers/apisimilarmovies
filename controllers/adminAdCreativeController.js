@@ -37,6 +37,9 @@ const validateCreativeBody = (body, { isUpdate = false } = {}) => {
   if (body?.imageUrl && !URL_PATTERN.test(String(body.imageUrl).trim())) {
     errors.push('imageUrl must be a valid http/https URL');
   }
+  if (body?.cloudinaryPublicId != null && String(body.cloudinaryPublicId).length > 512) {
+    errors.push('cloudinaryPublicId is too long');
+  }
   return errors;
 };
 
@@ -81,6 +84,7 @@ exports.create = asyncHandler(async (req, res) => {
     title: req.body.title || '',
     description: req.body.description || '',
     imageUrl: req.body.imageUrl || '',
+    cloudinaryPublicId: String(req.body.cloudinaryPublicId || '').trim().slice(0, 512),
     imageWidth: toPositiveIntOrNull(req.body.imageWidth),
     imageHeight: toPositiveIntOrNull(req.body.imageHeight),
     ctaLabel: req.body.ctaLabel || '',
@@ -103,6 +107,9 @@ exports.update = asyncHandler(async (req, res) => {
   if (updates.destinationUrl !== undefined) updates.destinationUrl = String(updates.destinationUrl).trim();
   if (updates.imageWidth !== undefined) updates.imageWidth = toPositiveIntOrNull(updates.imageWidth);
   if (updates.imageHeight !== undefined) updates.imageHeight = toPositiveIntOrNull(updates.imageHeight);
+  if (updates.cloudinaryPublicId !== undefined) {
+    updates.cloudinaryPublicId = String(updates.cloudinaryPublicId || '').trim().slice(0, 512);
+  }
   delete updates.website;
 
   const doc = await AdCreative.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true }).lean();
