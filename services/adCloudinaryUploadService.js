@@ -11,7 +11,7 @@ function normalizeImageMimetype(mimetype) {
 function uploadAdCreativeBuffer(buffer, { mimetype } = {}) {
   if (!isCloudinaryReady()) {
     const err = new Error(
-      'Cloudinary is not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET.',
+      'Cloudinary is not configured. On the API host, set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET (or legacy CLOUDINARY_NAME + CLOUDINARY_SECRET).',
     );
     err.statusCode = 503;
     throw err;
