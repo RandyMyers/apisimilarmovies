@@ -56,6 +56,7 @@ const pickCreative = (creatives = []) => {
 };
 
 exports.getPlacements = asyncHandler(async (req, res) => {
+  try {
   const websiteId = req.adWebsiteId;
   const page = String(req.query.page || '').trim().toLowerCase();
   const placement = String(req.query.placement || '').trim().toLowerCase();
@@ -144,6 +145,10 @@ exports.getPlacements = asyncHandler(async (req, res) => {
   }
 
   res.status(200).json({ success: true, data });
+  } catch (err) {
+    console.error('[adController] getPlacements failed:', err?.message, err?.stack || err);
+    throw err;
+  }
 });
 
 const createEvent = (eventType) =>

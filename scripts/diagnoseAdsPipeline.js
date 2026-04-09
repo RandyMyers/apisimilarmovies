@@ -11,6 +11,10 @@
  *   npm run diagnose:ads -- --siteKey=default
  *   npm run diagnose:ads -- --siteKey=fliqmatch --domain=www.fliqmatch.com --page=home --placement=top-banner
  *   npm run diagnose:ads -- --siteKey=default --apiBase=https://apisimilarmovies.vercel.app --domain=fliqmatch.com
+ *
+ * Simulate SPA on custom domain with X-Site=default (Origin / X-Client-Host → Website.domain):
+ *   npm run diagnose:ads -- --originHost=fliqmatch.com --apiBase=https://your-api
+ *   npm run diagnose:ads:origin   (see package.json for default apiBase; override with --apiBase=)
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -56,12 +60,23 @@ function summarizePlacementChecks(targeting, ctx) {
   };
 }
 
-async function httpProbe(apiBase, siteKey, query) {
+async function httpProbe(apiBase, siteKey, query, { originHost } = {}) {
   const base = String(apiBase || '').replace(/\/+$/, '');
   if (!base) return;
 
   console.log('\n========== Live HTTP (no auth headers) ==========');
   const headers = { 'X-Site': siteKey, Accept: 'application/json' };
+  if (originHost) {
+    const oh = String(originHost)
+      .replace(/^https?:\/\//, '')
+      .split('/')[0]
+      .split(':')[0]
+      .trim()
+      .toLowerCase();
+    headers.Origin = `https://${oh}`;
+    headers['X-Client-Host'] = oh;
+    console.log('  (using Origin + X-Client-Host as browser on custom domain:', oh, ')');
+  }
 
   const urls = [
     [`GET ${base}/api/v1/public/site-settings`, `${base}/api/v1/public/site-settings`],
@@ -131,6 +146,7 @@ async function main() {
   const simulateCountry = String(getArg('country', '')).trim().toLowerCase();
   const simulateDevice = String(getArg('device', 'desktop')).trim().toLowerCase();
   const apiBase = String(getArg('apiBase', '')).trim();
+  const originHostArg = String(getArg('originHost', '')).trim();
 
   const ctx = {
     page: simulatePage,
@@ -152,6 +168,20 @@ async function main() {
   await mongoose.connect(MONGO_URL);
   const now = new Date();
 
+  if (originHostArg) {
+    const { findWebsiteByPublicHostname } = require('../utils/resolvePublicSiteFromClient');
+    const oh = originHostArg.replace(/^https?:\/\//, '').split('/')[0].split(':')[0].toLowerCase();
+    const matched = await findWebsiteByPublicHostname(oh);
+    console.log('\n========== Client host → Website (same as production siteResolver when X-Site=default) ==========');
+    console.log('  Host:', oh);
+    console.log(
+      '  Result:',
+      matched
+        ? `key="${matched.key}" domain field="${matched.domain}" adsStatic=${Boolean(matched.adsStaticEnabled)} adsManaged=${Boolean(matched.adsManagedEnabled)}`
+        : 'NO MATCH — set Website.domain to this hostname in admin (e.g. fliqmatch.com)',
+    );
+  }
+
   const site = await Website.findOne({ key: siteKey }).lean();
   console.log(`========== Website: key "${siteKey}" ==========`);
 
@@ -168,7 +198,7 @@ async function main() {
     }
     console.log('\n  Fix: use --siteKey=<one of the keys above> or set REACT_APP_SITE_KEY to the same key.');
     await mongoose.disconnect();
-    if (apiBase) await httpProbe(apiBase, siteKey, ctx);
+    if (apiBase) await httpProbe(apiBase, siteKey, ctx, { originHost: originHostArg || undefined });
     process.exit(0);
   }
 
@@ -251,7 +281,11 @@ async function main() {
   await mongoose.disconnect();
 
   if (apiBase) {
-    await httpProbe(apiBase, siteKey, ctx);
+    const probeKey = originHostArg ? 'default' : siteKey;
+    if (originHostArg) {
+      console.log('\nHTTP probe uses X-Site=default + Origin to mirror fliqmatch.com → API on another host.');
+    }
+    await httpProbe(apiBase, probeKey, ctx, { originHost: originHostArg || undefined });
   } else {
     console.log('\n(Optional) Re-run with --apiBase=https://your-api-host to hit live site-settings + placements.');
   }

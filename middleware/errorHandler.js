@@ -6,6 +6,11 @@ function errorHandler(err, req, res, next) {
   // eslint-disable-next-line no-unused-vars
   const _next = next;
 
+  const path = String(req.originalUrl || req.url || '');
+  if (err && path.includes('/api/v1/admin')) {
+    console.error('[admin API]', req.method, path, err?.message || err, err?.stack || '');
+  }
+
   const status = Number.isFinite(err?.statusCode) ? err.statusCode : 500;
   const message =
     typeof err?.message === 'string' && err.message.trim() ? err.message.trim() : 'Internal server error';

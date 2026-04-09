@@ -43,10 +43,24 @@ const validateCreativeBody = (body, { isUpdate = false } = {}) => {
   return errors;
 };
 
+const CREATIVE_UPDATE_KEYS = [
+  'internalName',
+  'type',
+  'title',
+  'description',
+  'imageUrl',
+  'cloudinaryPublicId',
+  'imageWidth',
+  'imageHeight',
+  'ctaLabel',
+  'destinationUrl',
+];
+
 exports.list = asyncHandler(async (req, res) => {
   const websiteParam = req.query.website;
   const websiteId = websiteParam ? await resolveWebsiteIdForAds(websiteParam) : null;
   if (websiteParam && !websiteId) {
+    console.warn('[adminAdCreative] list: invalid website filter', { websiteParam });
     return res.status(400).json({ success: false, message: 'Invalid website (id or site key)' });
   }
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
@@ -70,39 +84,54 @@ exports.getById = asyncHandler(async (req, res) => {
 
 exports.create = asyncHandler(async (req, res) => {
   const errors = validateCreativeBody(req.body);
-  if (errors.length) return res.status(400).json({ success: false, message: errors[0], errors });
+  if (errors.length) {
+    console.warn('[adminAdCreative] create validation failed', errors, { bodyKeys: Object.keys(req.body || {}) });
+    return res.status(400).json({ success: false, message: errors[0], errors });
+  }
   const websiteId = req.body.website;
   if (!websiteId) return res.status(400).json({ success: false, message: 'website (id) is required' });
   const website = await Website.findById(websiteId).lean();
   if (!website) return res.status(400).json({ success: false, message: 'Website not found' });
 
   const actor = adminActorId(req);
-  const doc = await AdCreative.create({
-    website: websiteId,
-    internalName: String(req.body.internalName).trim(),
-    type: ALLOWED_TYPES.has(String(req.body.type || '').trim()) ? String(req.body.type).trim() : 'image',
-    title: req.body.title || '',
-    description: req.body.description || '',
-    imageUrl: req.body.imageUrl || '',
-    cloudinaryPublicId: String(req.body.cloudinaryPublicId || '').trim().slice(0, 512),
-    imageWidth: toPositiveIntOrNull(req.body.imageWidth),
-    imageHeight: toPositiveIntOrNull(req.body.imageHeight),
-    ctaLabel: req.body.ctaLabel || '',
-    destinationUrl: String(req.body.destinationUrl).trim(),
-    createdBy: actor,
-    updatedBy: actor,
-  });
+  let doc;
+  try {
+    doc = await AdCreative.create({
+      website: websiteId,
+      internalName: String(req.body.internalName).trim(),
+      type: ALLOWED_TYPES.has(String(req.body.type || '').trim()) ? String(req.body.type).trim() : 'image',
+      title: req.body.title || '',
+      description: req.body.description || '',
+      imageUrl: req.body.imageUrl || '',
+      cloudinaryPublicId: String(req.body.cloudinaryPublicId || '').trim().slice(0, 512),
+      imageWidth: toPositiveIntOrNull(req.body.imageWidth),
+      imageHeight: toPositiveIntOrNull(req.body.imageHeight),
+      ctaLabel: req.body.ctaLabel || '',
+      destinationUrl: String(req.body.destinationUrl).trim(),
+      createdBy: actor,
+      updatedBy: actor,
+    });
+  } catch (err) {
+    console.error('[adminAdCreative] create AdCreative failed:', err?.message, err?.stack || err);
+    throw err;
+  }
   res.status(201).json({ success: true, data: doc });
 });
 
 exports.update = asyncHandler(async (req, res) => {
   const errors = validateCreativeBody(req.body, { isUpdate: true });
-  if (errors.length) return res.status(400).json({ success: false, message: errors[0], errors });
+  if (errors.length) {
+    console.warn('[adminAdCreative] update validation failed', errors, { id: req.params.id });
+    return res.status(400).json({ success: false, message: errors[0], errors });
+  }
   const prev = await AdCreative.findById(req.params.id).lean();
   if (!prev) return res.status(404).json({ success: false, message: 'Ad creative not found' });
 
   const actor = adminActorId(req);
-  const updates = { ...req.body, updatedBy: actor };
+  const updates = { updatedBy: actor };
+  for (const k of CREATIVE_UPDATE_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(req.body, k)) updates[k] = req.body[k];
+  }
   if (updates.internalName !== undefined) updates.internalName = String(updates.internalName).trim();
   if (updates.destinationUrl !== undefined) updates.destinationUrl = String(updates.destinationUrl).trim();
   if (updates.imageWidth !== undefined) updates.imageWidth = toPositiveIntOrNull(updates.imageWidth);
@@ -110,9 +139,17 @@ exports.update = asyncHandler(async (req, res) => {
   if (updates.cloudinaryPublicId !== undefined) {
     updates.cloudinaryPublicId = String(updates.cloudinaryPublicId || '').trim().slice(0, 512);
   }
-  delete updates.website;
+  if (updates.type !== undefined && !ALLOWED_TYPES.has(String(updates.type).trim())) {
+    return res.status(400).json({ success: false, message: 'invalid creative type' });
+  }
 
-  const doc = await AdCreative.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true }).lean();
+  let doc;
+  try {
+    doc = await AdCreative.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true }).lean();
+  } catch (err) {
+    console.error('[adminAdCreative] update failed:', err?.message, err?.stack || err, { id: req.params.id });
+    throw err;
+  }
   if (!doc) return res.status(404).json({ success: false, message: 'Ad creative not found' });
   res.status(200).json({ success: true, data: doc });
 });

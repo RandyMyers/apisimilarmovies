@@ -1,7 +1,12 @@
 const mongoose = require('mongoose');
 const Website = require('../models/Website');
+const {
+  DEFAULT_SITE_KEY,
+  resolveSiteDocWhenDefaultHeader,
+  getClientFacingHostname,
+} = require('../utils/resolvePublicSiteFromClient');
 
-const DEFAULT_SITE_KEY = 'default';
+const DEBUG_ADS = process.env.DEBUG_ADS === '1';
 
 async function resolveSiteKey(req) {
   const headerKey = req.headers['x-site'];
@@ -13,17 +18,38 @@ async function resolveSiteKey(req) {
 
 async function siteResolver(req, res, next) {
   try {
-    const siteKey = await resolveSiteKey(req);
-    req.siteKey = siteKey;
+    const headerKey = await resolveSiteKey(req);
 
     // Avoid Mongoose buffering when Mongo is not connected (e.g. missing MONGO_URL or cold start race).
     if (mongoose.connection.readyState !== 1) {
+      req.siteKey = headerKey;
       req.site = null;
       return next();
     }
 
-    // Best-effort: attach site doc if it exists; otherwise allow default.
-    const site = await Website.findOne({ key: siteKey, isActive: true }).lean();
+    let siteKey = headerKey;
+    let site = await Website.findOne({ key: siteKey, isActive: true }).lean();
+
+    /**
+     * SPA on fliqmatch.com with REACT_APP_SITE_KEY=default calls API on another host (e.g. Vercel).
+     * req.hostname is wrong; map via Origin / X-Client-Host → Website.domain.
+     */
+    if (headerKey === DEFAULT_SITE_KEY) {
+      const byClient = await resolveSiteDocWhenDefaultHeader(req);
+      if (byClient) {
+        siteKey = byClient.key;
+        site = byClient;
+        if (DEBUG_ADS) {
+          console.log('[DEBUG_ADS] siteResolver: default X-Site → matched Website by client host', {
+            clientHost: getClientFacingHostname(req),
+            siteKey: siteKey,
+            domain: byClient.domain,
+          });
+        }
+      }
+    }
+
+    req.siteKey = siteKey;
     req.site = site || null;
     return next();
   } catch (err) {

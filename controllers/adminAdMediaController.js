@@ -45,6 +45,7 @@ exports.uploadAdCreativeImage = asyncHandler(async (req, res) => {
     });
     return res.status(201).json({ success: true, data });
   } catch (err) {
+    console.error('[adminAdMedia] uploadAdCreativeImage failed:', err?.message || err, err?.stack || err?.error || '');
     const status = err.statusCode || 500;
     const message = err.message || err.http_code?.toString() || 'Upload failed';
     return res.status(status).json({ success: false, message });

@@ -86,6 +86,7 @@ app.use(
       'Authorization',
       'X-Requested-With',
       'X-Site',
+      'X-Client-Host',
       'X-Locale',
       'X-Country-Code',
     ],
@@ -97,7 +98,7 @@ app.use(morgan('dev'));
 // Connect before routes / siteResolver (Website.findOne) — avoids Mongoose buffering timeouts on Vercel
 app.use(ensureMongoConnection);
 
-// Multi-site resolver (adds req.siteKey from X-Site header)
+// Multi-site: X-Site header + when X-Site is "default", match Website.domain to Origin / X-Client-Host (SPA on custom domain → API elsewhere)
 app.use(siteResolver);
 
 // Public per-site settings (no auth; uses X-Site → Website)
