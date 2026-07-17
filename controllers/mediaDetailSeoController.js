@@ -1,32 +1,32 @@
 const MediaDetailSEO = require('../models/MediaDetailSEO');
 const Media = require('../models/Media');
 const { logAdminAction } = require('../utils/adminAudit');
+const { resolveMediaSeoMeta } = require('../utils/resolveMediaSeoMeta');
+const { mergeTranslations } = require('../utils/mergeSeoTranslations');
 
 const MEDIA_CATEGORIES = ['movie', 'tv', 'anime_movie', 'anime_tv'];
-const DEFAULT_LANGUAGE = 'en';
 
 function resolveMeta(doc, language) {
-  const lang = (language || DEFAULT_LANGUAGE).toLowerCase();
-  const translation = (doc.translations || []).find((t) => t.language === lang);
+  const meta = resolveMediaSeoMeta(doc, language);
   return {
-    metaTitle:
-      translation?.metaTitle?.trim() ? translation.metaTitle.trim() : doc.metaTitle?.trim() || '',
-    metaDescription:
-      translation?.metaDescription?.trim()
-        ? translation.metaDescription.trim()
-        : doc.metaDescription?.trim() || '',
-    keywords:
-      Array.isArray(translation?.keywords) && translation.keywords.length
-        ? translation.keywords.filter(Boolean)
-        : Array.isArray(doc.keywords)
-          ? doc.keywords.filter(Boolean)
-          : [],
+    metaTitle: meta.metaTitle,
+    metaDescription: meta.metaDescription,
+    keywords: meta.keywords,
     content:
-      translation?.content?.trim() ? String(translation.content).trim() : doc.content ? String(doc.content).trim() : '',
-    robots: doc.robots || 'index, follow',
+      (() => {
+        const langKey = String(language || 'en-US').toLowerCase();
+        const translation = (doc.translations || []).find((t) => String(t.language || '').toLowerCase() === langKey);
+        if (translation?.content?.trim()) return String(translation.content).trim();
+        return doc.content ? String(doc.content).trim() : '';
+      })(),
+    robots: meta.robots,
     includeInSitemap: doc.includeInSitemap,
     changefreq: doc.changefreq,
     priority: doc.priority,
+    slug: meta.slug,
+    headline: meta.headline,
+    canonicalPath: meta.canonicalPath,
+    ogImage: meta.ogImage,
   };
 }
 
@@ -36,7 +36,7 @@ exports.getMeta = async (req, res) => {
     const siteKey = req.siteKey || 'default';
     const category = String(req.query.category || '').toLowerCase();
     const tmdbId = req.query.tmdbId ? parseInt(req.query.tmdbId, 10) : null;
-    const language = req.query.language || DEFAULT_LANGUAGE;
+    const language = req.query.language || 'en-US';
 
     if (!MEDIA_CATEGORIES.includes(category)) {
       return res.status(400).json({ error: 'category is required and must be one of: movie,tv,anime_movie,anime_tv' });
@@ -172,6 +172,8 @@ exports.getAdminOne = async (req, res) => {
       includeInSitemap: Boolean(doc.includeInSitemap),
       changefreq: doc.changefreq,
       priority: doc.priority,
+      canonicalPath: doc.canonicalPath || '',
+      ogImage: doc.ogImage || '',
       translations: Array.isArray(doc.translations) ? doc.translations : [],
     });
   } catch (err) {
@@ -221,6 +223,8 @@ exports.upsert = async (req, res) => {
       includeInSitemap,
       changefreq,
       priority,
+      canonicalPath,
+      ogImage,
       translations,
     } = req.body || {};
 
@@ -233,6 +237,16 @@ exports.upsert = async (req, res) => {
       return res.status(400).json({ error: 'metaTitle is required' });
     }
 
+    const query = { siteKey, category: cat, isActive: true };
+    if (cat === 'movie' || cat === 'anime_movie') {
+      query.tmdbMovieId = idNum;
+    } else {
+      query.tmdbTvId = idNum;
+    }
+
+    const existing = await MediaDetailSEO.findOne(query).lean();
+    const mergedTranslations = mergeTranslations(existing?.translations || [], Array.isArray(translations) ? translations : []);
+
     const update = {
       siteKey,
       category: cat,
@@ -244,17 +258,19 @@ exports.upsert = async (req, res) => {
       includeInSitemap: includeInSitemap !== undefined ? Boolean(includeInSitemap) : true,
       changefreq: changefreq != null ? String(changefreq) : 'weekly',
       priority: priority != null ? Number(priority) : 0.8,
-      translations: Array.isArray(translations) ? translations : [],
+      canonicalPath: canonicalPath != null ? String(canonicalPath).trim() : existing?.canonicalPath || '',
+      ogImage: ogImage != null ? String(ogImage).trim() : existing?.ogImage || '',
+      translations: mergedTranslations,
     };
 
-    const query = { siteKey, category: cat, isActive: true };
     if (cat === 'movie' || cat === 'anime_movie') {
-      query.tmdbMovieId = idNum;
+      update.tmdbMovieId = idNum;
+      update.tmdbTvId = null;
     } else {
-      query.tmdbTvId = idNum;
+      update.tmdbTvId = idNum;
+      update.tmdbMovieId = null;
     }
 
-    // If record doesn't exist, create it even if isActive wasn't set.
     const doc = await MediaDetailSEO.findOneAndUpdate(
       query,
       { $set: update, $setOnInsert: { isActive: true } },

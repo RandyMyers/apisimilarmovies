@@ -12,6 +12,8 @@ const translationSchema = new mongoose.Schema(
     keywords: [{ type: String, trim: true }],
     slug: { type: String, default: '' },
     content: { type: String, default: '' },
+    canonicalPath: { type: String, default: '', trim: true },
+    ogImage: { type: String, default: '', trim: true },
   },
   { _id: false },
 );
@@ -34,6 +36,8 @@ const mediaDetailSeoSchema = new mongoose.Schema(
     metaDescription: { type: String, default: '', trim: true },
     keywords: [{ type: String, trim: true }],
     content: { type: String, default: '', trim: true },
+    canonicalPath: { type: String, default: '', trim: true },
+    ogImage: { type: String, default: '', trim: true },
 
     translations: [translationSchema],
 

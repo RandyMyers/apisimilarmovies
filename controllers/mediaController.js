@@ -6,6 +6,7 @@ const MediaDetailSEO = require('../models/MediaDetailSEO');
 const Media = require('../models/Media');
 const Genre = require('../models/Genre');
 const { parseCategory, categoryToTmdbKind } = require('../utils/parseCategory');
+const { resolveMediaSeoMeta } = require('../utils/resolveMediaSeoMeta');
 
 function buildImageUrl(path, size = 'w500') {
   if (!path) return null;
@@ -77,15 +78,16 @@ exports.getMedia = async (req, res) => {
       seoDoc = null;
     }
     const langKey = String(language || 'en-US').toLowerCase();
-    const translation = seoDoc?.translations?.find((t) => t.language === langKey) || null;
+    const translation = seoDoc?.translations?.find((t) => String(t.language || '').toLowerCase() === langKey) || null;
     const translatedContent = translation?.content;
     const translatedTitle = translation?.title;
+    const seo = resolveMediaSeoMeta(seoDoc, language);
 
     return res.json({
       category,
       tmdbKind,
       id,
-      title: translatedTitle ? String(translatedTitle) : fallbackTitle,
+      title: translatedTitle ? String(translatedTitle) : seo.headline || fallbackTitle,
       overview: details.overview || '',
       posterUrl,
       backdropUrl,
@@ -97,6 +99,7 @@ exports.getMedia = async (req, res) => {
         : seoDoc?.content
           ? String(seoDoc.content)
           : '',
+      seo,
     });
   } catch (err) {
     const status = err.response?.status || 500;

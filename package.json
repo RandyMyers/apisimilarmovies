@@ -13,6 +13,9 @@
     "check:ads-health": "node scripts/checkAdsCampaignHealth.js",
     "diagnose:ads": "node scripts/diagnoseAdsPipeline.js",
     "diagnose:ads:origin": "node scripts/diagnoseAdsPipeline.js --siteKey=fliqmatch --originHost=fliqmatch.com --apiBase=https://apisimilarmovies.vercel.app --domain=fliqmatch.com",
+    "migrate:site-content": "node scripts/migrateSiteKeyContent.js",
+    "check:site-content": "node scripts/checkSiteKeyContent.js",
+    "check:site-content": "node scripts/checkSiteKeyContent.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
