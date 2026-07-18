@@ -38,6 +38,8 @@ const adminAdMediaRoutes = require('./routes/adminAdMediaRoutes');
 const adminContentMediaRoutes = require('./routes/adminContentMediaRoutes');
 const adminVisitorRoutes = require('./routes/adminVisitorRoutes');
 const visitorRoutes = require('./routes/visitorRoutes');
+const offerClickRoutes = require('./routes/offerClickRoutes');
+const adminOfferClickRoutes = require('./routes/adminOfferClickRoutes');
 const { requireSiteForAds } = require('./middleware/requireSiteForAds');
 const { parseAdContext } = require('./middleware/parseAdContext');
 const publicSiteRoutes = require('./routes/publicSiteRoutes');
@@ -132,6 +134,7 @@ app.use('/api/v1/media', mediaRoutes);
 
 // Public visitor tracking
 app.use('/api/v1/visitors', visitorRoutes);
+app.use('/api/v1/offers', offerClickRoutes);
 
 // Votes
 app.use('/api/v1/media', voteLimiter, similarityVoteRoutes);
@@ -163,6 +166,7 @@ app.use('/api/v1/admin/ads/analytics', authenticateAdmin, authorizeRoles('modera
 app.use('/api/v1/admin/ads/media', authenticateAdmin, authorizeRoles('moderator'), adminAdMediaRoutes);
 app.use('/api/v1/admin/content/media', authenticateAdmin, authorizeRoles('editor'), adminContentMediaRoutes);
 app.use('/api/v1/admin/visitors', authenticateAdmin, authorizeRoles('moderator'), adminVisitorRoutes);
+app.use('/api/v1/admin/offer-clicks', authenticateAdmin, authorizeRoles('moderator'), adminOfferClickRoutes);
 
 // Central error handler (keep last)
 app.use(errorHandler);

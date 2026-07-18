@@ -126,6 +126,51 @@ exports.getOverview = asyncHandler(async (req, res) => {
   const t = totals[0] || { pageViews: 0, uniqueVisitors: 0, uniqueSessions: 0 };
   const t24 = totals24h[0] || { pageViews24h: 0, visitors24h: 0 };
 
+  const [topPages, countriesByActivity] = await Promise.all([
+    Visitor.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: '$path',
+          viewCount: { $sum: 1 },
+          uniqueVisitors: { $addToSet: '$ipHash' },
+          lastViewed: { $max: '$visitedAt' },
+        },
+      },
+      { $sort: { viewCount: -1 } },
+      { $limit: 15 },
+      {
+        $project: {
+          pagePath: '$_id',
+          viewCount: 1,
+          uniqueVisitors: { $size: '$uniqueVisitors' },
+          lastViewed: 1,
+          _id: 0,
+        },
+      },
+    ]),
+    Visitor.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: '$country',
+          views: { $sum: 1 },
+          uniqueVisitors: { $addToSet: '$ipHash' },
+        },
+      },
+      { $sort: { views: -1 } },
+      { $limit: 10 },
+      {
+        $project: {
+          countryCode: '$_id',
+          views: 1,
+          uniqueVisitors: { $size: '$uniqueVisitors' },
+          _id: 0,
+        },
+      },
+    ]),
+  ]);
+
   return res.json({
     success: true,
     days,
@@ -143,6 +188,13 @@ exports.getOverview = asyncHandler(async (req, res) => {
       source: referrerLabel(row._id),
       views: row.views,
       uniqueVisitors: row.uniqueVisitors?.length || 0,
+    })),
+    topPages,
+    countriesByActivity,
+    countriesByVisitor: topCountries.map((row) => ({
+      countryCode: row.country,
+      country: row.country,
+      visitors: row.visitors,
     })),
   });
 });
@@ -225,8 +277,11 @@ exports.listAggregated = asyncHandler(async (req, res) => {
 
   const [result] = await Visitor.aggregate(pipeline);
   const total = result?.total?.[0]?.count || 0;
-  const visitors = (result?.items || []).map((row) => ({
+  const visitors = (result?.items || []).map((row, idx) => ({
+    id: `${row.countryCode}-${row.deviceType}-${row.lastPath}-${skip + idx}`,
     ...row,
+    lastSeenAt: row.lastVisitedAt,
+    referrer: row.lastReferrer,
     referrerLabel: referrerLabel(row.lastReferrer),
   }));
 
@@ -236,5 +291,50 @@ exports.listAggregated = asyncHandler(async (req, res) => {
     total,
     page,
     pages: Math.max(1, Math.ceil(total / limit)),
+  });
+});
+
+exports.getDeviceBreakdown = asyncHandler(async (req, res) => {
+  const siteKey = req.siteKey || 'default';
+  const days = Math.min(90, Math.max(1, parseInt(req.query.days, 10) || 30));
+  const since = daysAgo(days);
+  const rows = await Visitor.aggregate([
+    { $match: { siteKey, isBot: false, visitedAt: { $gte: since } } },
+    { $group: { _id: '$device', count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+    { $project: { device: '$_id', count: 1, _id: 0 } },
+  ]);
+  return res.json({ success: true, data: rows });
+});
+
+exports.getLiveActivity = asyncHandler(async (req, res) => {
+  const siteKey = req.siteKey || 'default';
+  const minutes = Math.min(60, Math.max(1, parseInt(req.query.minutes, 10) || 5));
+  const since = new Date(Date.now() - minutes * 60 * 1000);
+  const rows = await Visitor.aggregate([
+    { $match: { siteKey, isBot: false, visitedAt: { $gte: since } } },
+    { $sort: { visitedAt: -1 } },
+    { $limit: 50 },
+    {
+      $group: {
+        _id: '$sessionId',
+        countryCode: { $last: '$country' },
+        currentPage: { $last: '$path' },
+        lastSeenAt: { $max: '$visitedAt' },
+        pageViewsInSession: { $sum: 1 },
+      },
+    },
+    { $sort: { lastSeenAt: -1 } },
+    { $limit: 25 },
+  ]);
+  return res.json({
+    success: true,
+    data: rows.map((row) => ({
+      trackingKey: row._id || 'guest',
+      countryCode: row.countryCode,
+      currentPage: row.currentPage,
+      pageViewsInSession: row.pageViewsInSession,
+      timeOnPage: null,
+    })),
   });
 });

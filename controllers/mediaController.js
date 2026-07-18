@@ -88,6 +88,13 @@ exports.getMedia = async (req, res) => {
     const offers = Array.isArray(translation?.offers)
       ? translation.offers.filter((o) => o && (o.title || o.url))
       : [];
+    const similarTranslation =
+      seoDoc?.similarPage?.translations?.find(
+        (t) => String(t.language || '').toLowerCase() === langKey,
+      ) || null;
+    const similarOffers = Array.isArray(similarTranslation?.offers)
+      ? similarTranslation.offers.filter((o) => o && (o.title || o.url))
+      : [];
 
     return res.json({
       category,
@@ -111,6 +118,7 @@ exports.getMedia = async (req, res) => {
       seo,
       similarSeo,
       offers,
+      similarOffers,
     });
   } catch (err) {
     const status = err.response?.status || 500;
