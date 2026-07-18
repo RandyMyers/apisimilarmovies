@@ -5,6 +5,100 @@ const { logAdminAction } = require('../utils/adminAudit');
 const KINDS = new Set(['movie', 'tv']);
 const CATS = new Set(['movie', 'tv', 'anime_movie', 'anime_tv']);
 
+exports.listBases = async (req, res) => {
+  try {
+    const siteKey = req.siteKey || 'default';
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const skip = Math.max(0, parseInt(req.query.skip, 10) || 0);
+    const q = String(req.query.q || '').trim();
+    const category = req.query.category ? parseCategory(req.query.category) : null;
+    const sortByRaw = String(req.query.sortBy || 'updatedAt').trim();
+    const sortBy = ['displayName', 'similarCount', 'updatedAt'].includes(sortByRaw) ? sortByRaw : 'updatedAt';
+    const sortDir = String(req.query.sortDir || 'desc').toLowerCase() === 'asc' ? 1 : -1;
+
+    const match = { siteKey };
+    if (category) match.baseCategory = category;
+
+    const pipeline = [
+      { $match: match },
+      {
+        $group: {
+          _id: { baseCategory: '$baseCategory', baseTmdbId: '$baseTmdbId' },
+          similarCount: { $sum: 1 },
+          updatedAt: { $max: '$updatedAt' },
+        },
+      },
+      {
+        $lookup: {
+          from: 'media',
+          let: { cat: '$_id.baseCategory', tid: '$_id.baseTmdbId' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$siteKey', siteKey] },
+                    { $eq: ['$category', '$$cat'] },
+                    {
+                      $or: [{ $eq: ['$tmdbMovieId', '$$tid'] }, { $eq: ['$tmdbTvId', '$$tid'] }],
+                    },
+                  ],
+                },
+              },
+            },
+            { $project: { displayName: 1, posterPath: 1, tmdbKind: 1 } },
+          ],
+          as: 'media',
+        },
+      },
+      { $unwind: { path: '$media', preserveNullAndEmptyDocuments: true } },
+    ];
+
+    if (q) {
+      const or = [{ 'media.displayName': { $regex: q, $options: 'i' } }];
+      const n = parseInt(q, 10);
+      if (Number.isFinite(n)) or.push({ '_id.baseTmdbId': n });
+      pipeline.push({ $match: { $or: or } });
+    }
+
+    const sortField =
+      sortBy === 'displayName'
+        ? { 'media.displayName': sortDir }
+        : sortBy === 'similarCount'
+          ? { similarCount: sortDir }
+          : { updatedAt: sortDir };
+
+    pipeline.push({ $sort: sortField });
+    pipeline.push({
+      $facet: {
+        items: [{ $skip: skip }, { $limit: limit }],
+        total: [{ $count: 'count' }],
+      },
+    });
+
+    const [result] = await CuratedSimilar.aggregate(pipeline);
+    const total = result?.total?.[0]?.count || 0;
+    const items = (result?.items || []).map((row) => ({
+      baseCategory: row._id.baseCategory,
+      baseTmdbId: row._id.baseTmdbId,
+      similarCount: row.similarCount || 0,
+      updatedAt: row.updatedAt,
+      displayName: row.media?.displayName || `#${row._id.baseTmdbId}`,
+      posterPath: row.media?.posterPath || '',
+      tmdbKind: row.media?.tmdbKind || '',
+    }));
+
+    return res.json({
+      items,
+      total,
+      page: Math.floor(skip / limit) + 1,
+      pages: Math.max(1, Math.ceil(total / limit)),
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'Failed to list curated bases' });
+  }
+};
+
 exports.listForBase = async (req, res) => {
   try {
     const siteKey = req.siteKey || 'default';

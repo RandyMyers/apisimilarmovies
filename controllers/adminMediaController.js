@@ -83,11 +83,28 @@ exports.createMedia = async (req, res) => {
 exports.listMedia = async (req, res) => {
   try {
     const siteKey = req.siteKey || 'default';
-    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 100));
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
     const skip = Math.max(0, parseInt(req.query.skip, 10) || 0);
+    const q = String(req.query.q || '').trim();
+    const category = String(req.query.category || '').trim().toLowerCase();
+    const sortByRaw = String(req.query.sortBy || 'updatedAt').trim();
+    const sortBy = ['displayName', 'category', 'updatedAt'].includes(sortByRaw) ? sortByRaw : 'updatedAt';
+    const sortDir = String(req.query.sortDir || 'desc').toLowerCase() === 'asc' ? 1 : -1;
+
+    const filter = { siteKey };
+    if (category && MEDIA_CATEGORIES.includes(category)) filter.category = category;
+    if (q) {
+      const or = [{ displayName: { $regex: q, $options: 'i' } }];
+      const n = parseInt(q, 10);
+      if (Number.isFinite(n)) {
+        or.push({ tmdbMovieId: n }, { tmdbTvId: n });
+      }
+      filter.$or = or;
+    }
+
     const [items, total] = await Promise.all([
-      Media.find({ siteKey }).sort({ updatedAt: -1 }).skip(skip).limit(limit).lean(),
-      Media.countDocuments({ siteKey }),
+      Media.find(filter).sort({ [sortBy]: sortDir }).skip(skip).limit(limit).lean(),
+      Media.countDocuments(filter),
     ]);
     return res.json({
       items: items.map((m) => ({
@@ -103,6 +120,8 @@ exports.listMedia = async (req, res) => {
         updatedAt: m.updatedAt,
       })),
       total,
+      page: Math.floor(skip / limit) + 1,
+      pages: Math.max(1, Math.ceil(total / limit)),
     });
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Failed to list media' });

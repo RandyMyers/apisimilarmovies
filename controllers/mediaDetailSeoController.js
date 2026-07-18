@@ -175,6 +175,7 @@ exports.getAdminOne = async (req, res) => {
       canonicalPath: doc.canonicalPath || '',
       ogImage: doc.ogImage || '',
       translations: Array.isArray(doc.translations) ? doc.translations : [],
+      similarPage: doc.similarPage || {},
     });
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Failed to load admin SEO page' });
@@ -226,15 +227,14 @@ exports.upsert = async (req, res) => {
       canonicalPath,
       ogImage,
       translations,
+      similarPage,
+      scope,
     } = req.body || {};
 
     const cat = String(category || '').toLowerCase();
     const idNum = tmdbId != null ? parseInt(tmdbId, 10) : null;
     if (!MEDIA_CATEGORIES.includes(cat) || !Number.isFinite(idNum)) {
       return res.status(400).json({ error: 'category and tmdbId are required' });
-    }
-    if (!String(metaTitle || '').trim()) {
-      return res.status(400).json({ error: 'metaTitle is required' });
     }
 
     const query = { siteKey, category: cat, isActive: true };
@@ -245,6 +245,69 @@ exports.upsert = async (req, res) => {
     }
 
     const existing = await MediaDetailSEO.findOne(query).lean();
+    const saveScope = String(scope || '').toLowerCase();
+
+    if (saveScope === 'similar') {
+      const sp = similarPage && typeof similarPage === 'object' ? similarPage : {};
+      if (!String(sp.metaTitle || '').trim()) {
+        return res.status(400).json({ error: 'similarPage.metaTitle is required' });
+      }
+      const mergedSimilarTranslations = mergeTranslations(
+        existing?.similarPage?.translations || [],
+        Array.isArray(sp.translations) ? sp.translations : [],
+      );
+      const similarUpdate = {
+        metaTitle: String(sp.metaTitle).trim(),
+        metaDescription: sp.metaDescription != null ? String(sp.metaDescription).trim() : '',
+        keywords: Array.isArray(sp.keywords) ? sp.keywords.map(String).filter(Boolean) : [],
+        content: sp.content != null ? String(sp.content).trim() : '',
+        robots: sp.robots != null ? String(sp.robots).trim() : 'index, follow',
+        includeInSitemap: sp.includeInSitemap !== undefined ? Boolean(sp.includeInSitemap) : true,
+        changefreq: sp.changefreq != null ? String(sp.changefreq) : 'weekly',
+        priority: sp.priority != null ? Number(sp.priority) : 0.65,
+        canonicalPath: sp.canonicalPath != null ? String(sp.canonicalPath).trim() : '',
+        ogImage: sp.ogImage != null ? String(sp.ogImage).trim() : '',
+        translations: mergedSimilarTranslations,
+      };
+
+      const detailFallbackTitle = String(existing?.metaTitle || sp.metaTitle).trim();
+      const update = existing
+        ? { similarPage: similarUpdate }
+        : {
+            siteKey,
+            category: cat,
+            metaTitle: detailFallbackTitle,
+            metaDescription: '',
+            keywords: [],
+            content: '',
+            robots: 'index, follow',
+            includeInSitemap: true,
+            changefreq: 'weekly',
+            priority: 0.8,
+            translations: [],
+            similarPage: similarUpdate,
+            ...(cat === 'movie' || cat === 'anime_movie'
+              ? { tmdbMovieId: idNum, tmdbTvId: null }
+              : { tmdbTvId: idNum, tmdbMovieId: null }),
+          };
+
+      const doc = await MediaDetailSEO.findOneAndUpdate(
+        query,
+        { $set: update, $setOnInsert: { isActive: true } },
+        { upsert: true, new: true },
+      );
+      await logAdminAction(req, {
+        action: 'seo.upsert_similar_page',
+        entityType: 'media_detail_seo',
+        entityId: String(doc._id),
+        details: { category: cat, tmdbId: idNum },
+      });
+      return res.json({ success: true, id: doc._id });
+    }
+
+    if (!String(metaTitle || '').trim()) {
+      return res.status(400).json({ error: 'metaTitle is required' });
+    }
     const mergedTranslations = mergeTranslations(existing?.translations || [], Array.isArray(translations) ? translations : []);
 
     const update = {

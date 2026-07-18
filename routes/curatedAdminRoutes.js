@@ -3,6 +3,7 @@ const router = express.Router();
 const curatedSimilarAdminController = require('../controllers/curatedSimilarAdminController');
 const similarSuggestionController = require('../controllers/similarSuggestionController');
 
+router.get('/bases', curatedSimilarAdminController.listBases);
 router.get('/similar', curatedSimilarAdminController.listForBase);
 router.post('/similar', curatedSimilarAdminController.add);
 router.patch('/similar/:id', curatedSimilarAdminController.update);

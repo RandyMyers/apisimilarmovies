@@ -6,7 +6,7 @@ const MediaDetailSEO = require('../models/MediaDetailSEO');
 const Media = require('../models/Media');
 const Genre = require('../models/Genre');
 const { parseCategory, categoryToTmdbKind } = require('../utils/parseCategory');
-const { resolveMediaSeoMeta } = require('../utils/resolveMediaSeoMeta');
+const { resolveMediaSeoMeta, resolveSimilarPageSeoMeta } = require('../utils/resolveMediaSeoMeta');
 
 function buildImageUrl(path, size = 'w500') {
   if (!path) return null;
@@ -82,6 +82,7 @@ exports.getMedia = async (req, res) => {
     const translatedContent = translation?.content;
     const translatedTitle = translation?.title;
     const seo = resolveMediaSeoMeta(seoDoc, language);
+    const similarSeo = resolveSimilarPageSeoMeta(seoDoc, language);
 
     return res.json({
       category,
@@ -100,6 +101,7 @@ exports.getMedia = async (req, res) => {
           ? String(seoDoc.content)
           : '',
       seo,
+      similarSeo,
     });
   } catch (err) {
     const status = err.response?.status || 500;

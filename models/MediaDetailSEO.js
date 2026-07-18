@@ -18,6 +18,23 @@ const translationSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const pageSeoBlockSchema = new mongoose.Schema(
+  {
+    metaTitle: { type: String, default: '', trim: true },
+    metaDescription: { type: String, default: '', trim: true },
+    keywords: [{ type: String, trim: true }],
+    content: { type: String, default: '', trim: true },
+    canonicalPath: { type: String, default: '', trim: true },
+    ogImage: { type: String, default: '', trim: true },
+    robots: { type: String, default: 'index, follow', trim: true },
+    includeInSitemap: { type: Boolean, default: true },
+    changefreq: { type: String, default: 'weekly' },
+    priority: { type: Number, default: 0.65 },
+    translations: [translationSchema],
+  },
+  { _id: false },
+);
+
 const mediaDetailSeoSchema = new mongoose.Schema(
   {
     siteKey: { type: String, required: true, trim: true, lowercase: true, index: true, default: 'default' },
@@ -40,6 +57,9 @@ const mediaDetailSeoSchema = new mongoose.Schema(
     ogImage: { type: String, default: '', trim: true },
 
     translations: [translationSchema],
+
+    // SEO for the public /similar listing page (e.g. "similar to Stranger Things").
+    similarPage: { type: pageSeoBlockSchema, default: () => ({}) },
 
     // Sitemap hints
     changefreq: { type: String, default: 'weekly' },
