@@ -7,13 +7,16 @@ const Media = require('../models/Media');
 const Genre = require('../models/Genre');
 const { parseCategory, categoryToTmdbKind } = require('../utils/parseCategory');
 const { resolveMediaSeoMeta, resolveSimilarPageSeoMeta } = require('../utils/resolveMediaSeoMeta');
+const { getCached, setCached } = require('../utils/tmdbCache');
+const {
+  normalizeLanguage,
+  watchRegionFromLanguage,
+  resolveMediaTitle,
+  isDefaultEnglish,
+} = require('../utils/tmdbLocale');
+const { buildImageUrl, normalizeMediaExtras } = require('../utils/tmdbMediaNormalize');
 
-function buildImageUrl(path, size = 'w500') {
-  if (!path) return null;
-  const p = String(path).trim();
-  if (/^https?:\/\//i.test(p)) return p;
-  return `https://image.tmdb.org/t/p/${size}${p.startsWith('/') ? p : `/${p}`}`;
-}
+const FULL_DETAIL_TTL_MS = 12 * 60 * 60 * 1000;
 
 function humanizeSlug(slug) {
   return String(slug || '')
@@ -23,23 +26,43 @@ function humanizeSlug(slug) {
     .join(' ');
 }
 
+function resolveGenres(serverGenreSlugs, tmdbGenres, adminGenreBySlug) {
+  if (Array.isArray(tmdbGenres) && tmdbGenres.length > 0) {
+    return tmdbGenres.map((g) => ({ id: g.id, name: g.name }));
+  }
+  if (!serverGenreSlugs.length) return [];
+  return serverGenreSlugs.map((slug) => ({
+    id: slug,
+    name: adminGenreBySlug[slug] || humanizeSlug(slug),
+  }));
+}
+
+async function fetchTmdbDetails(tmdbKind, id, language, watchRegion) {
+  const lang = normalizeLanguage(language);
+  const cacheKey = `full:${tmdbKind}:${id}:${lang}:${watchRegion}`;
+  const cached = await getCached(cacheKey);
+  if (cached) return cached;
+  const details =
+    tmdbKind === 'movie'
+      ? await tmdbService.getMovieDetails(id, { language: lang, append: true })
+      : await tmdbService.getTVDetails(id, { language: lang, append: true });
+  await setCached(cacheKey, details, FULL_DETAIL_TTL_MS);
+  return details;
+}
+
 exports.getMedia = async (req, res) => {
   try {
     const category = parseCategory(req.params.category);
     const id = parseInt(req.params.id, 10);
     if (!category || !Number.isFinite(id)) return res.status(400).json({ error: 'Invalid category or id' });
 
-    const language = req.query.language || 'en-US';
+    const language = normalizeLanguage(req.query.language);
+    const watchRegion =
+      String(req.query.watchRegion || '').trim().toUpperCase() || watchRegionFromLanguage(language);
     const tmdbKind = categoryToTmdbKind(category);
 
-    const details =
-      tmdbKind === 'movie'
-        ? await tmdbService.getMovieDetails(id, language)
-        : await tmdbService.getTVDetails(id, language);
+    const details = await fetchTmdbDetails(tmdbKind, id, language, watchRegion);
 
-    const fallbackTitle = details.title || details.name || details.original_name || `#${id}`;
-    const posterUrl = buildImageUrl(details.poster_path, 'w500');
-    const backdropUrl = buildImageUrl(details.backdrop_path, 'w780');
     const siteKey = req.siteKey || 'default';
     let mediaDoc = null;
     try {
@@ -54,8 +77,10 @@ exports.getMedia = async (req, res) => {
     } catch {
       mediaDoc = null;
     }
+
     const serverGenreSlugs = Array.isArray(mediaDoc?.genreSlugs) ? mediaDoc.genreSlugs.filter(Boolean) : [];
-    let genres = Array.isArray(details.genres) ? details.genres.map((g) => ({ id: g.id, name: g.name })) : [];
+    const tmdbGenres = Array.isArray(details.genres) ? details.genres : [];
+    let adminGenreBySlug = {};
     if (serverGenreSlugs.length > 0) {
       const docs = await Genre.find({
         siteKey: { $in: ['global', 'default'] },
@@ -63,9 +88,10 @@ exports.getMedia = async (req, res) => {
       })
         .select('slug name')
         .lean();
-      const bySlug = Object.fromEntries(docs.map((g) => [String(g.slug), String(g.name || '')]));
-      genres = serverGenreSlugs.map((slug) => ({ id: slug, name: bySlug[slug] || humanizeSlug(slug) }));
+      adminGenreBySlug = Object.fromEntries(docs.map((g) => [String(g.slug), String(g.name || '')]));
     }
+    const genres = resolveGenres(serverGenreSlugs, tmdbGenres, adminGenreBySlug);
+
     let seoDoc = null;
     try {
       seoDoc = await MediaDetailSEO.findOne({
@@ -76,10 +102,10 @@ exports.getMedia = async (req, res) => {
         tmdbTvId: tmdbKind === 'tv' ? id : null,
       }).lean();
     } catch {
-      // Public page should still work with TMDB data even if SEO storage is temporarily unavailable.
       seoDoc = null;
     }
-    const langKey = String(language || 'en-US').toLowerCase();
+
+    const langKey = language.toLowerCase();
     const translation = seoDoc?.translations?.find((t) => String(t.language || '').toLowerCase() === langKey) || null;
     const translatedContent = translation?.content;
     const translatedTitle = translation?.title;
@@ -96,19 +122,30 @@ exports.getMedia = async (req, res) => {
       ? similarTranslation.offers.filter((o) => o && (o.title || o.url))
       : [];
 
+    const resolvedTitle = resolveMediaTitle({
+      seoTitle: translatedTitle || null,
+      details,
+      displayName: mediaDoc?.displayName,
+      id,
+    });
+    const title = translatedTitle ? String(translatedTitle) : seo.headline || resolvedTitle;
+    const posterUrl = buildImageUrl(details.poster_path, 'w500');
+    const backdropUrl = buildImageUrl(details.backdrop_path, 'w780');
+    const extras = normalizeMediaExtras(details, { watchRegion, tmdbKind });
+
     return res.json({
       category,
       tmdbKind,
       id,
-      title: translatedTitle ? String(translatedTitle) : seo.headline || fallbackTitle,
+      title,
       overview: details.overview || '',
       posterUrl,
       posterAlt:
         String(mediaDoc?.posterAlt || '').trim() ||
-        (translatedTitle ? String(translatedTitle) : seo.headline || fallbackTitle),
+        (translatedTitle ? String(translatedTitle) : seo.headline || resolvedTitle),
       backdropUrl,
       releaseDate: details.release_date || details.first_air_date || null,
-      voteAverage: details.vote_average || null,
+      voteAverage: details.vote_average ?? null,
       genres,
       content: translatedContent
         ? String(translatedContent)
@@ -119,6 +156,7 @@ exports.getMedia = async (req, res) => {
       similarSeo,
       offers,
       similarOffers,
+      ...extras,
     });
   } catch (err) {
     const status = err.response?.status || 500;
@@ -177,7 +215,8 @@ exports.getSimilar = async (req, res) => {
       }, {});
     }
 
-    const language = req.query.language || 'en-US';
+    const language = normalizeLanguage(req.query.language);
+    const preferLocalized = !isDefaultEnglish(language);
     const allGenreSlugs = [...new Set(rows.flatMap((row) => (Array.isArray(row.genreSlugs) ? row.genreSlugs : [])))];
     let genreNameBySlug = {};
     if (allGenreSlugs.length > 0) {
@@ -194,15 +233,20 @@ exports.getSimilar = async (req, res) => {
       rows.map(async (row) => {
         const storedName = String(row.displayName || '').trim();
         let title = storedName;
+        let originalTitle = null;
         let overview = '';
         let posterUrl = row.posterPath ? buildImageUrl(row.posterPath) : null;
         try {
           const d =
             row.similarTmdbKind === 'movie'
-              ? await tmdbService.getMovieDetails(row.similarTmdbId, language)
-              : await tmdbService.getTVDetails(row.similarTmdbId, language);
-          if (!storedName) {
-            title = d.title || d.name || title;
+              ? await tmdbService.getMovieDetails(row.similarTmdbId, { language, append: false })
+              : await tmdbService.getTVDetails(row.similarTmdbId, { language, append: false });
+          const tmdbTitle = d.title || d.name || '';
+          originalTitle = d.original_title || d.original_name || null;
+          if (tmdbTitle && (preferLocalized || !storedName)) {
+            title = tmdbTitle;
+          } else if (!storedName) {
+            title = tmdbTitle || title;
           }
           overview = d.overview || '';
           if (!row.posterPath) {
@@ -219,6 +263,7 @@ exports.getSimilar = async (req, res) => {
           id: row.similarTmdbId,
           category: row.similarCategory,
           title,
+          originalTitle,
           overview,
           posterUrl,
           posterAlt: String(row.posterAlt || '').trim() || title,

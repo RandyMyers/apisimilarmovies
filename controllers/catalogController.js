@@ -2,7 +2,9 @@ const mongoose = require('mongoose');
 const Media = require('../models/Media');
 const SimilarityVote = require('../models/SimilarityVote');
 const MediaReview = require('../models/MediaReview');
-const tmdbService = require('../services/tmdbService');
+const { normalizeLanguage } = require('../utils/tmdbLocale');
+const { enrichCatalogItems } = require('../utils/tmdbCatalogEnrich');
+const { buildImageUrl } = require('../utils/tmdbMediaNormalize');
 
 function categoryFilterForGroup(group) {
   const g = String(group || '').toLowerCase().trim();
@@ -44,11 +46,6 @@ function buildCatalogQuery(siteKey, { group, genre, region }) {
   return parts.length === 1 ? parts[0] : { $and: parts };
 }
 
-function buildImageUrl(path, size = 'w342') {
-  if (!path) return null;
-  return `https://image.tmdb.org/t/p/${size}${path}`;
-}
-
 function allowedCategoriesForGroup(group) {
   const g = String(group || '').toLowerCase().trim();
   if (g === 'movies') return ['movie'];
@@ -78,32 +75,11 @@ function toTopScore({ voteAvg, voteCount, reviewAvg, reviewCount }) {
   return hasVotes ? voteW : reviewW;
 }
 
-async function enrichPoster(item) {
-  if (item.posterUrl) return item;
-  const kind = item.tmdbKind;
-  const id =
-    item.tmdbId != null
-      ? item.tmdbId
-      : kind === 'movie'
-        ? item.tmdbMovieId
-        : item.tmdbTvId;
-  if (!id) return item;
-  try {
-    const d =
-      kind === 'movie'
-        ? await tmdbService.getMovieDetails(id, 'en-US')
-        : await tmdbService.getTVDetails(id, 'en-US');
-    const p = d.poster_path;
-    return { ...item, posterUrl: buildImageUrl(p) };
-  } catch {
-    return item;
-  }
-}
-
 exports.listCatalog = async (req, res) => {
   try {
     const siteKey = req.siteKey || 'default';
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 24));
+    const language = normalizeLanguage(req.query.language);
     const connected = mongoose.connection.readyState === 1;
 
     const items = [];
@@ -128,19 +104,12 @@ exports.listCatalog = async (req, res) => {
         posterUrl: m.posterPath ? buildImageUrl(m.posterPath) : null,
         genreSlugs: Array.isArray(m.genreSlugs) ? m.genreSlugs : [],
         overview: '',
+        title: m.displayName || '',
       });
     }
-    const needEnrich = items.filter((i) => !i.posterUrl);
-    if (needEnrich.length > 0 && needEnrich.length <= 24) {
-      const enriched = await Promise.all(needEnrich.map((i) => enrichPoster(i)));
-      const map = new Map(enriched.map((e) => [`${e.category}-${e.tmdbId}`, e]));
-      for (let i = 0; i < items.length; i += 1) {
-        const k = `${items[i].category}-${items[i].tmdbId}`;
-        if (map.has(k)) items[i] = map.get(k);
-      }
-    }
+    const enrichedItems = await enrichCatalogItems(items, language);
 
-    const payload = { source: 'catalog', items };
+    const payload = { source: 'catalog', items: enrichedItems };
 
     if (String(req.query.counts || '') === '1') {
       const base = { siteKey };
@@ -163,6 +132,7 @@ exports.listTopCatalog = async (req, res) => {
   try {
     const siteKey = req.siteKey || 'default';
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 60));
+    const language = normalizeLanguage(req.query.language);
     const connected = mongoose.connection.readyState === 1;
     if (!connected) {
       return res.json({ source: 'top-catalog', items: [], message: 'Mongo connection required.' });
@@ -283,13 +253,14 @@ exports.listTopCatalog = async (req, res) => {
       return b.updatedAt - a.updatedAt;
     });
 
-    const items = scored.slice(0, limit).map((x) => ({
+    const rawItems = scored.slice(0, limit).map((x) => ({
       category: x.category,
       tmdbKind: x.tmdbKind,
       tmdbId: x.tmdbId,
       displayName: x.displayName,
       posterUrl: x.posterUrl,
       overview: '',
+      title: x.displayName || '',
       score: {
         topScore: x.topScore,
         voteAvg: x.voteAvg,
@@ -298,6 +269,7 @@ exports.listTopCatalog = async (req, res) => {
         reviewCount: x.reviewCount,
       },
     }));
+    const items = await enrichCatalogItems(rawItems, language);
     return res.json({ source: 'top-catalog', items });
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Top catalog failed' });

@@ -1,0 +1,139 @@
+function buildImageUrl(path, size = 'w500') {
+  if (!path) return null;
+  const p = String(path).trim();
+  if (/^https?:\/\//i.test(p)) return p;
+  return `https://image.tmdb.org/t/p/${size}${p.startsWith('/') ? p : `/${p}`}`;
+}
+
+function pickCertification(details, watchRegion, tmdbKind) {
+  if (tmdbKind === 'movie') {
+    const rows = details.release_dates?.results || [];
+    const country = rows.find((r) => r.iso_3166_1 === watchRegion) || rows.find((r) => r.iso_3166_1 === 'US');
+    const cert = (country?.release_dates || []).find((d) => d.certification)?.certification;
+    return cert || null;
+  }
+  const rows = details.content_ratings?.results || [];
+  const country = rows.find((r) => r.iso_3166_1 === watchRegion) || rows.find((r) => r.iso_3166_1 === 'US');
+  return country?.rating || null;
+}
+
+function normalizeVideos(details) {
+  const results = details.videos?.results || [];
+  const yt = results.filter((v) => v.site === 'YouTube' && v.key);
+  const mapVideo = (v) => ({
+    id: v.id,
+    key: v.key,
+    name: v.name || '',
+    type: v.type || '',
+    url: `https://www.youtube.com/watch?v=${v.key}`,
+  });
+  return {
+    trailers: yt.filter((v) => v.type === 'Trailer').slice(0, 6).map(mapVideo),
+    teasers: yt.filter((v) => v.type === 'Teaser').slice(0, 3).map(mapVideo),
+  };
+}
+
+function normalizeWatchProviders(details, watchRegion) {
+  const regionData = details['watch/providers']?.results?.[watchRegion];
+  if (!regionData) return null;
+  const mapProvider = (p) => ({
+    id: p.provider_id,
+    name: p.provider_name,
+    logoUrl: buildImageUrl(p.logo_path, 'w92'),
+  });
+  return {
+    link: regionData.link || null,
+    flatrate: (regionData.flatrate || []).map(mapProvider),
+    rent: (regionData.rent || []).slice(0, 8).map(mapProvider),
+    buy: (regionData.buy || []).slice(0, 8).map(mapProvider),
+  };
+}
+
+function normalizeCredits(details, tmdbKind) {
+  const credits = tmdbKind === 'tv' ? details.aggregate_credits : details.credits;
+  const cast = (credits?.cast || []).slice(0, 12).map((c) => ({
+    id: c.id,
+    name: c.name,
+    character: c.character || c.roles?.[0]?.character || '',
+    profileUrl: buildImageUrl(c.profile_path, 'w185'),
+  }));
+  const keyJobs = new Set(['Director', 'Creator', 'Writer', 'Screenplay', 'Executive Producer']);
+  const crew = (credits?.crew || [])
+    .filter((c) => keyJobs.has(c.job))
+    .slice(0, 8)
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      job: c.job,
+    }));
+  return { cast, crew };
+}
+
+function normalizeKeywords(details) {
+  const kw = details.keywords?.keywords || details.keywords?.results || [];
+  return kw.slice(0, 20).map((k) => ({ id: k.id, name: k.name }));
+}
+
+function normalizeExternalIds(details) {
+  const ext = details.external_ids || {};
+  return {
+    imdbId: ext.imdb_id || null,
+    wikidataId: ext.wikidata_id || null,
+  };
+}
+
+function normalizeCollection(details) {
+  const col = details.belongs_to_collection;
+  if (!col) return null;
+  return {
+    id: col.id,
+    name: col.name,
+    posterUrl: buildImageUrl(col.poster_path, 'w342'),
+  };
+}
+
+function normalizeRecommendations(details) {
+  return (details.recommendations?.results || []).slice(0, 8).map((r) => ({
+    id: r.id,
+    title: r.title || r.name || '',
+    posterUrl: buildImageUrl(r.poster_path, 'w342'),
+    voteAverage: r.vote_average ?? null,
+  }));
+}
+
+function normalizeMediaExtras(details, { watchRegion, tmdbKind }) {
+  const isMovie = tmdbKind === 'movie';
+  return {
+    originalTitle: details.original_title || details.original_name || null,
+    tagline: details.tagline || null,
+    runtime: isMovie ? details.runtime ?? null : null,
+    episodeRunTime:
+      !isMovie && Array.isArray(details.episode_run_time) ? details.episode_run_time[0] ?? null : null,
+    numberOfSeasons: details.number_of_seasons ?? null,
+    numberOfEpisodes: details.number_of_episodes ?? null,
+    status: details.status || null,
+    inProduction: details.in_production ?? null,
+    voteCount: details.vote_count ?? null,
+    popularity: details.popularity ?? null,
+    spokenLanguages: (details.spoken_languages || []).map((l) => l.english_name || l.name).filter(Boolean),
+    productionCountries: (details.production_countries || []).map((c) => c.name).filter(Boolean),
+    homepage: details.homepage || null,
+    certification: pickCertification(details, watchRegion, tmdbKind),
+    credits: normalizeCredits(details, tmdbKind),
+    videos: normalizeVideos(details),
+    keywords: normalizeKeywords(details),
+    externalIds: normalizeExternalIds(details),
+    watchProviders: normalizeWatchProviders(details, watchRegion),
+    belongsToCollection: normalizeCollection(details),
+    recommendations: normalizeRecommendations(details),
+    budget: isMovie ? details.budget ?? null : null,
+    revenue: isMovie ? details.revenue ?? null : null,
+    networks: !isMovie ? (details.networks || []).map((n) => n.name).filter(Boolean) : [],
+    createdBy: !isMovie ? (details.created_by || []).map((c) => c.name).filter(Boolean) : [],
+  };
+}
+
+module.exports = {
+  buildImageUrl,
+  normalizeMediaExtras,
+};
