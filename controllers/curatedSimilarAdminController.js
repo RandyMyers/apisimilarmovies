@@ -51,11 +51,15 @@ exports.listBases = async (req, res) => {
           as: 'media',
         },
       },
-      { $unwind: { path: '$media', preserveNullAndEmptyDocuments: true } },
+      {
+        $addFields: {
+          mediaDoc: { $ifNull: [{ $arrayElemAt: ['$media', 0] }, {}] },
+        },
+      },
     ];
 
     if (q) {
-      const or = [{ 'media.displayName': { $regex: q, $options: 'i' } }];
+      const or = [{ 'mediaDoc.displayName': { $regex: q, $options: 'i' } }];
       const n = parseInt(q, 10);
       if (Number.isFinite(n)) or.push({ '_id.baseTmdbId': n });
       pipeline.push({ $match: { $or: or } });
@@ -63,7 +67,7 @@ exports.listBases = async (req, res) => {
 
     const sortField =
       sortBy === 'displayName'
-        ? { 'media.displayName': sortDir }
+        ? { 'mediaDoc.displayName': sortDir }
         : sortBy === 'similarCount'
           ? { similarCount: sortDir }
           : { updatedAt: sortDir };
@@ -83,9 +87,9 @@ exports.listBases = async (req, res) => {
       baseTmdbId: row._id.baseTmdbId,
       similarCount: row.similarCount || 0,
       updatedAt: row.updatedAt,
-      displayName: row.media?.displayName || `#${row._id.baseTmdbId}`,
-      posterPath: row.media?.posterPath || '',
-      tmdbKind: row.media?.tmdbKind || '',
+      displayName: row.mediaDoc?.displayName || `#${row._id.baseTmdbId}`,
+      posterPath: row.mediaDoc?.posterPath || '',
+      tmdbKind: row.mediaDoc?.tmdbKind || '',
     }));
 
     return res.json({

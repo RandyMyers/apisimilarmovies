@@ -8,6 +8,63 @@ const { logAdminAction } = require('../utils/adminAudit');
 
 const MEDIA_CATEGORIES = ['movie', 'tv', 'anime_movie', 'anime_tv'];
 const TMDB_KINDS = ['movie', 'tv'];
+const CURATED_COLLECTION = 'curatedsimilars';
+
+async function getSimilarCountMap(siteKey, mediaItems) {
+  if (!Array.isArray(mediaItems) || !mediaItems.length) return new Map();
+  const or = mediaItems
+    .map((m) => {
+      const baseTmdbId = m.tmdbKind === 'movie' ? m.tmdbMovieId : m.tmdbTvId;
+      if (!Number.isFinite(baseTmdbId)) return null;
+      return { baseCategory: m.category, baseTmdbId };
+    })
+    .filter(Boolean);
+  if (!or.length) return new Map();
+
+  const rows = await CuratedSimilar.aggregate([
+    { $match: { siteKey, $or: or } },
+    {
+      $group: {
+        _id: { baseCategory: '$baseCategory', baseTmdbId: '$baseTmdbId' },
+        similarCount: { $sum: 1 },
+      },
+    },
+  ]);
+
+  return new Map(
+    rows.map((r) => [`${r._id.baseCategory}:${r._id.baseTmdbId}`, Number(r.similarCount || 0)]),
+  );
+}
+
+function mapMediaRow(m, similarCount = 0) {
+  return {
+    id: m._id,
+    siteKey: m.siteKey,
+    category: m.category,
+    tmdbKind: m.tmdbKind,
+    tmdbMovieId: m.tmdbMovieId,
+    tmdbTvId: m.tmdbTvId,
+    displayName: m.displayName,
+    posterPath: m.posterPath || '',
+    genreSlugs: Array.isArray(m.genreSlugs) ? m.genreSlugs : [],
+    similarCount: Number(similarCount || 0),
+    updatedAt: m.updatedAt,
+  };
+}
+
+function buildMediaMatchFilter(siteKey, category, q) {
+  const filter = { siteKey };
+  if (category && MEDIA_CATEGORIES.includes(category)) filter.category = category;
+  if (q) {
+    const or = [{ displayName: { $regex: q, $options: 'i' } }];
+    const n = parseInt(q, 10);
+    if (Number.isFinite(n)) {
+      or.push({ tmdbMovieId: n }, { tmdbTvId: n });
+    }
+    filter.$or = or;
+  }
+  return filter;
+}
 
 exports.createMedia = async (req, res) => {
   try {
@@ -88,37 +145,89 @@ exports.listMedia = async (req, res) => {
     const q = String(req.query.q || '').trim();
     const category = String(req.query.category || '').trim().toLowerCase();
     const sortByRaw = String(req.query.sortBy || 'updatedAt').trim();
-    const sortBy = ['displayName', 'category', 'updatedAt'].includes(sortByRaw) ? sortByRaw : 'updatedAt';
+    const sortBy = ['displayName', 'category', 'updatedAt', 'similarCount'].includes(sortByRaw)
+      ? sortByRaw
+      : 'updatedAt';
     const sortDir = String(req.query.sortDir || 'desc').toLowerCase() === 'asc' ? 1 : -1;
+    const similarFilter = String(req.query.similarFilter || '').trim().toLowerCase();
 
-    const filter = { siteKey };
-    if (category && MEDIA_CATEGORIES.includes(category)) filter.category = category;
-    if (q) {
-      const or = [{ displayName: { $regex: q, $options: 'i' } }];
-      const n = parseInt(q, 10);
-      if (Number.isFinite(n)) {
-        or.push({ tmdbMovieId: n }, { tmdbTvId: n });
-      }
-      filter.$or = or;
+    const filter = buildMediaMatchFilter(siteKey, category, q);
+    const useSimilarPipeline = sortBy === 'similarCount' || similarFilter === 'has' || similarFilter === 'none';
+
+    if (useSimilarPipeline) {
+      const pipeline = [
+        { $match: filter },
+        {
+          $addFields: {
+            baseTmdbId: {
+              $cond: [{ $eq: ['$tmdbKind', 'movie'] }, '$tmdbMovieId', '$tmdbTvId'],
+            },
+          },
+        },
+        {
+          $lookup: {
+            from: CURATED_COLLECTION,
+            let: { cat: '$category', tid: '$baseTmdbId' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $eq: ['$siteKey', siteKey] },
+                      { $eq: ['$baseCategory', '$$cat'] },
+                      { $eq: ['$baseTmdbId', '$$tid'] },
+                    ],
+                  },
+                },
+              },
+              { $count: 'n' },
+            ],
+            as: 'curatedStats',
+          },
+        },
+        {
+          $addFields: {
+            similarCount: { $ifNull: [{ $arrayElemAt: ['$curatedStats.n', 0] }, 0] },
+          },
+        },
+      ];
+
+      if (similarFilter === 'has') pipeline.push({ $match: { similarCount: { $gt: 0 } } });
+      if (similarFilter === 'none') pipeline.push({ $match: { similarCount: { $eq: 0 } } });
+
+      pipeline.push({ $sort: { [sortBy]: sortDir, displayName: 1 } });
+      pipeline.push({
+        $facet: {
+          items: [{ $skip: skip }, { $limit: limit }],
+          total: [{ $count: 'count' }],
+        },
+      });
+
+      const [result] = await Media.aggregate(pipeline);
+      const total = result?.total?.[0]?.count || 0;
+      const items = (result?.items || []).map((m) => mapMediaRow(m, m.similarCount));
+
+      return res.json({
+        items,
+        total,
+        page: Math.floor(skip / limit) + 1,
+        pages: Math.max(1, Math.ceil(total / limit)),
+      });
     }
 
-    const [items, total] = await Promise.all([
+    const [rawItems, total] = await Promise.all([
       Media.find(filter).sort({ [sortBy]: sortDir }).skip(skip).limit(limit).lean(),
       Media.countDocuments(filter),
     ]);
+    const countMap = await getSimilarCountMap(siteKey, rawItems);
+    const items = rawItems.map((m) => {
+      const baseTmdbId = m.tmdbKind === 'movie' ? m.tmdbMovieId : m.tmdbTvId;
+      const key = `${m.category}:${baseTmdbId}`;
+      return mapMediaRow(m, countMap.get(key) || 0);
+    });
+
     return res.json({
-      items: items.map((m) => ({
-        id: m._id,
-        siteKey: m.siteKey,
-        category: m.category,
-        tmdbKind: m.tmdbKind,
-        tmdbMovieId: m.tmdbMovieId,
-        tmdbTvId: m.tmdbTvId,
-        displayName: m.displayName,
-        posterPath: m.posterPath || '',
-        genreSlugs: Array.isArray(m.genreSlugs) ? m.genreSlugs : [],
-        updatedAt: m.updatedAt,
-      })),
+      items,
       total,
       page: Math.floor(skip / limit) + 1,
       pages: Math.max(1, Math.ceil(total / limit)),
