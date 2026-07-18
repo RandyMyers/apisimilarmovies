@@ -131,6 +131,7 @@ exports.add = async (req, res) => {
       similarTmdbId,
       displayName,
       posterPath,
+      posterAlt,
       genreSlugs,
       sortOrder,
     } = req.body || {};
@@ -152,6 +153,7 @@ exports.add = async (req, res) => {
       similarTmdbId: sid,
       displayName: String(displayName || '').trim() || `#${sid}`,
       posterPath: String(posterPath || '').trim(),
+      posterAlt: String(posterAlt || '').trim(),
       genreSlugs: Array.isArray(genreSlugs)
         ? genreSlugs.map((g) => String(g).trim().toLowerCase()).filter(Boolean)
         : [],
@@ -202,6 +204,7 @@ exports.update = async (req, res) => {
       patch.displayName = displayName;
     }
     if (req.body?.posterPath != null) patch.posterPath = String(req.body.posterPath).trim();
+    if (req.body?.posterAlt != null) patch.posterAlt = String(req.body.posterAlt).trim();
     if (req.body?.genreSlugs != null) {
       patch.genreSlugs = Array.isArray(req.body.genreSlugs)
         ? req.body.genreSlugs.map((g) => String(g).trim().toLowerCase()).filter(Boolean)

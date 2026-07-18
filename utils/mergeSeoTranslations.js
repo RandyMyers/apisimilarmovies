@@ -14,6 +14,10 @@ function mergeTranslationRow(existing, incoming) {
   return {
     language,
     title: next.title !== undefined ? String(next.title || '').trim() : String(prev.title || '').trim(),
+    focusKeyword:
+      next.focusKeyword !== undefined
+        ? String(next.focusKeyword || '').trim()
+        : String(prev.focusKeyword || '').trim(),
     metaTitle:
       next.metaTitle !== undefined ? String(next.metaTitle || '').trim() : String(prev.metaTitle || '').trim(),
     metaDescription:
@@ -32,6 +36,17 @@ function mergeTranslationRow(existing, incoming) {
         ? String(next.canonicalPath || '').trim()
         : String(prev.canonicalPath || '').trim(),
     ogImage: next.ogImage !== undefined ? String(next.ogImage || '').trim() : String(prev.ogImage || '').trim(),
+    offers: Array.isArray(next.offers)
+      ? next.offers.map((o) => ({
+          imageUrl: String(o?.imageUrl || '').trim(),
+          title: String(o?.title || '').trim(),
+          description: String(o?.description || '').trim(),
+          url: String(o?.url || '').trim(),
+          buttonLabel: String(o?.buttonLabel || 'View offer').trim() || 'View offer',
+        }))
+      : Array.isArray(prev.offers)
+        ? prev.offers
+        : [],
   };
 }
 

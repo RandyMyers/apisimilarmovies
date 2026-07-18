@@ -35,6 +35,9 @@ const adminAdCampaignRoutes = require('./routes/adminAdCampaignRoutes');
 const adminAdCreativeRoutes = require('./routes/adminAdCreativeRoutes');
 const adminAdAnalyticsRoutes = require('./routes/adminAdAnalyticsRoutes');
 const adminAdMediaRoutes = require('./routes/adminAdMediaRoutes');
+const adminContentMediaRoutes = require('./routes/adminContentMediaRoutes');
+const adminVisitorRoutes = require('./routes/adminVisitorRoutes');
+const visitorRoutes = require('./routes/visitorRoutes');
 const { requireSiteForAds } = require('./middleware/requireSiteForAds');
 const { parseAdContext } = require('./middleware/parseAdContext');
 const publicSiteRoutes = require('./routes/publicSiteRoutes');
@@ -127,6 +130,9 @@ app.use('/api/v1/media', writeLimiter, mediaPublicExtraRoutes);
 // Media hero + curated similar list
 app.use('/api/v1/media', mediaRoutes);
 
+// Public visitor tracking
+app.use('/api/v1/visitors', visitorRoutes);
+
 // Votes
 app.use('/api/v1/media', voteLimiter, similarityVoteRoutes);
 
@@ -155,6 +161,8 @@ app.use('/api/v1/admin/ads/creatives', authenticateAdmin, authorizeRoles('modera
 app.use('/api/v1/admin/ads/campaigns', authenticateAdmin, authorizeRoles('moderator'), adminAdCampaignRoutes);
 app.use('/api/v1/admin/ads/analytics', authenticateAdmin, authorizeRoles('moderator'), adminAdAnalyticsRoutes);
 app.use('/api/v1/admin/ads/media', authenticateAdmin, authorizeRoles('moderator'), adminAdMediaRoutes);
+app.use('/api/v1/admin/content/media', authenticateAdmin, authorizeRoles('editor'), adminContentMediaRoutes);
+app.use('/api/v1/admin/visitors', authenticateAdmin, authorizeRoles('moderator'), adminVisitorRoutes);
 
 // Central error handler (keep last)
 app.use(errorHandler);

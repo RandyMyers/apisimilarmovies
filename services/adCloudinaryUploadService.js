@@ -8,7 +8,7 @@ function normalizeImageMimetype(mimetype) {
   return t;
 }
 
-function uploadAdCreativeBuffer(buffer, { mimetype } = {}) {
+function uploadImageBuffer(buffer, { mimetype, folder } = {}) {
   if (!isCloudinaryReady()) {
     const err = new Error(
       'Cloudinary is not configured. On the API host, set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET (or legacy CLOUDINARY_NAME + CLOUDINARY_SECRET).',
@@ -30,13 +30,14 @@ function uploadAdCreativeBuffer(buffer, { mimetype } = {}) {
     throw err;
   }
 
-  const folder = process.env.CLOUDINARY_AD_FOLDER || 'similarmovies/ad-creatives';
+  const uploadFolder =
+    folder || process.env.CLOUDINARY_AD_FOLDER || 'similarmovies/ad-creatives';
   const cloudinary = getCloudinary();
 
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       {
-        folder,
+        folder: uploadFolder,
         resource_type: 'image',
         unique_filename: true,
         overwrite: false,
@@ -57,7 +58,19 @@ function uploadAdCreativeBuffer(buffer, { mimetype } = {}) {
   });
 }
 
+function uploadAdCreativeBuffer(buffer, options = {}) {
+  const folder = process.env.CLOUDINARY_AD_FOLDER || 'similarmovies/ad-creatives';
+  return uploadImageBuffer(buffer, { ...options, folder });
+}
+
+function uploadEditorContentBuffer(buffer, options = {}) {
+  const folder = process.env.CLOUDINARY_EDITOR_FOLDER || 'similarmovies/editor-content';
+  return uploadImageBuffer(buffer, { ...options, folder });
+}
+
 module.exports = {
+  uploadImageBuffer,
   uploadAdCreativeBuffer,
+  uploadEditorContentBuffer,
   ALLOWED_MIME,
 };

@@ -13,6 +13,7 @@ const curatedSimilarSchema = new mongoose.Schema(
     similarTmdbId: { type: Number, required: true },
     displayName: { type: String, required: true, trim: true },
     posterPath: { type: String, default: '' },
+    posterAlt: { type: String, default: '', trim: true },
     genreSlugs: [{ type: String, trim: true, lowercase: true }],
     sortOrder: { type: Number, default: 0 },
   },

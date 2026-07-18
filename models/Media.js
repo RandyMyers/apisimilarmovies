@@ -14,6 +14,7 @@ const mediaSchema = new mongoose.Schema(
 
     displayName: { type: String, required: true, trim: true },
     posterPath: { type: String, default: '', trim: true },
+    posterAlt: { type: String, default: '', trim: true },
     genreSlugs: [{ type: String, trim: true, lowercase: true }],
 
     // List of region codes (urlCodes) where this media should be shown/indexed.

@@ -8,6 +8,23 @@ const Media = require('../models/Media');
 const Website = require('../models/Website');
 // Keep in sync with admin MediaManagement.jsx LANGUAGES[].countryCode (no br; not in admin sidebar).
 const DEFAULT_REGIONS = ['us', 'gb', 'au', 'ie', 'de', 'at', 'es', 'it', 'fr', 'pt', 'nl', 'no', 'fi', 'dk', 'se'];
+const DEFAULT_HREFLANG_MAP = {
+  us: 'en-US',
+  gb: 'en-GB',
+  au: 'en-AU',
+  ie: 'ga-IE',
+  de: 'de-DE',
+  at: 'de-AT',
+  es: 'es-ES',
+  it: 'it-IT',
+  fr: 'fr-FR',
+  pt: 'pt-PT',
+  nl: 'nl-NL',
+  no: 'no-NO',
+  fi: 'fi-FI',
+  dk: 'da-DK',
+  se: 'sv-SE',
+};
 const DEFAULT_STATIC_PATHS = [
   '/about',
   '/contact',
@@ -27,19 +44,47 @@ const DEFAULT_STATIC_PATHS = [
   '/top/anime-tv',
 ];
 
+function hasNoindex(robots) {
+  return /noindex/i.test(String(robots || ''));
+}
+
+function slugForLanguage(translations = [], language) {
+  const langKey = String(language || '').toLowerCase();
+  const match = translations.find((t) => String(t.language || '').toLowerCase() === langKey);
+  if (match?.slug?.trim()) return match.slug.trim();
+  const fallback = translations.find((t) => String(t.language || '').toLowerCase() === 'en-us');
+  return fallback?.slug?.trim() || '';
+}
+
+function buildSlugByRegion(translations = [], hreflangMap = DEFAULT_HREFLANG_MAP) {
+  const slugByRegion = {};
+  for (const [region, language] of Object.entries(hreflangMap)) {
+    const slug = slugForLanguage(translations, language);
+    if (slug) slugByRegion[region] = slug;
+  }
+  return slugByRegion;
+}
+
 exports.getMediaDetailPagesForSitemap = async (req, res) => {
   try {
     const siteKey = req.siteKey || 'default';
     const pages = [];
 
     const docs = await MediaDetailSEO.find({ siteKey, isActive: true, includeInSitemap: true })
-      .select('category tmdbMovieId tmdbTvId updatedAt includeInSitemap priority changefreq robots')
+      .select(
+        'category tmdbMovieId tmdbTvId updatedAt includeInSitemap priority changefreq robots translations similarPage',
+      )
       .lean();
 
     if (!docs.length) return res.json({ pages: [] });
 
-    // For displayName + availableRegions we need Media
     for (const doc of docs) {
+      const similarPage = doc.similarPage || {};
+      if (similarPage.includeInSitemap === false) continue;
+
+      const effectiveRobots = similarPage.robots || doc.robots || 'index, follow';
+      if (hasNoindex(doc.robots) || hasNoindex(similarPage.robots) || hasNoindex(effectiveRobots)) continue;
+
       const mediaQuery =
         doc.category === 'movie' || doc.category === 'anime_movie'
           ? { siteKey, category: doc.category, tmdbMovieId: doc.tmdbMovieId }
@@ -55,9 +100,10 @@ exports.getMediaDetailPagesForSitemap = async (req, res) => {
         displayName: media.displayName,
         updatedAt: doc.updatedAt,
         availableRegions: media.availableRegions || [],
-        priority: doc.priority,
-        changefreq: doc.changefreq,
-        robots: doc.robots,
+        priority: Number.isFinite(Number(similarPage.priority)) ? Number(similarPage.priority) : doc.priority,
+        changefreq: similarPage.changefreq || doc.changefreq,
+        robots: effectiveRobots,
+        slugByRegion: buildSlugByRegion(doc.translations || []),
       });
     }
 
@@ -81,23 +127,7 @@ exports.getStaticPagesForSitemap = async (_req, res) => {
 exports.getRegionsForSitemap = async (_req, res) => {
   return res.json({
     regions: DEFAULT_REGIONS,
-    hreflangMap: {
-      us: 'en-US',
-      gb: 'en-GB',
-      au: 'en-AU',
-      ie: 'ga-IE',
-      de: 'de-DE',
-      at: 'de-AT',
-      es: 'es-ES',
-      it: 'it-IT',
-      fr: 'fr-FR',
-      pt: 'pt-PT',
-      nl: 'nl-NL',
-      no: 'no-NO',
-      fi: 'fi-FI',
-      dk: 'da-DK',
-      se: 'sv-SE',
-    },
+    hreflangMap: DEFAULT_HREFLANG_MAP,
   });
 };
 
@@ -110,7 +140,6 @@ exports.getSiteForSitemap = async (req, res) => {
     if (!site) return res.json({ domain: null, siteKey });
 
     const raw = String(site.domain || '').trim();
-    // If domain already includes protocol, keep it. Otherwise default to https://.
     const domain = raw
       ? /^https?:\/\//i.test(raw)
         ? raw
@@ -126,4 +155,3 @@ exports.getSiteForSitemap = async (req, res) => {
     return res.status(500).json({ error: err.message || 'Failed to resolve site for sitemap' });
   }
 };
-

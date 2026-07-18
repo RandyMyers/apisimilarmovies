@@ -77,6 +77,7 @@ exports.createMedia = async (req, res) => {
       displayName,
       availableRegions,
       posterPath,
+      posterAlt,
       genreSlugs,
     } = req.body || {};
 
@@ -98,6 +99,7 @@ exports.createMedia = async (req, res) => {
         ? availableRegions.map((r) => String(r).trim().toLowerCase()).filter(Boolean)
         : [],
       posterPath: posterPath != null ? String(posterPath).trim() : '',
+      posterAlt: posterAlt != null ? String(posterAlt).trim() : '',
       genreSlugs: Array.isArray(genreSlugs)
         ? genreSlugs.map((g) => String(g).trim().toLowerCase()).filter(Boolean)
         : [],
@@ -252,6 +254,7 @@ exports.getMediaOne = async (req, res) => {
       tmdbTvId: m.tmdbTvId,
       displayName: m.displayName,
       posterPath: m.posterPath || '',
+      posterAlt: m.posterAlt || '',
       genreSlugs: Array.isArray(m.genreSlugs) ? m.genreSlugs : [],
       availableRegions: Array.isArray(m.availableRegions) ? m.availableRegions : [],
       updatedAt: m.updatedAt,
@@ -268,6 +271,7 @@ exports.updateMedia = async (req, res) => {
     const patch = {};
     if (req.body?.displayName != null) patch.displayName = String(req.body.displayName).trim();
     if (req.body?.posterPath != null) patch.posterPath = String(req.body.posterPath).trim();
+    if (req.body?.posterAlt != null) patch.posterAlt = String(req.body.posterAlt).trim();
     if (req.body?.genreSlugs != null) {
       patch.genreSlugs = Array.isArray(req.body.genreSlugs)
         ? req.body.genreSlugs.map((g) => String(g).trim().toLowerCase()).filter(Boolean)

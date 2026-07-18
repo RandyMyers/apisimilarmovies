@@ -10,7 +10,9 @@ const { resolveMediaSeoMeta, resolveSimilarPageSeoMeta } = require('../utils/res
 
 function buildImageUrl(path, size = 'w500') {
   if (!path) return null;
-  return `https://image.tmdb.org/t/p/${size}${path}`;
+  const p = String(path).trim();
+  if (/^https?:\/\//i.test(p)) return p;
+  return `https://image.tmdb.org/t/p/${size}${p.startsWith('/') ? p : `/${p}`}`;
 }
 
 function humanizeSlug(slug) {
@@ -47,7 +49,7 @@ exports.getMedia = async (req, res) => {
         tmdbKind,
         ...(tmdbKind === 'movie' ? { tmdbMovieId: id } : { tmdbTvId: id }),
       })
-        .select('genreSlugs')
+        .select('genreSlugs posterAlt displayName')
         .lean();
     } catch {
       mediaDoc = null;
@@ -83,6 +85,9 @@ exports.getMedia = async (req, res) => {
     const translatedTitle = translation?.title;
     const seo = resolveMediaSeoMeta(seoDoc, language);
     const similarSeo = resolveSimilarPageSeoMeta(seoDoc, language);
+    const offers = Array.isArray(translation?.offers)
+      ? translation.offers.filter((o) => o && (o.title || o.url))
+      : [];
 
     return res.json({
       category,
@@ -91,6 +96,9 @@ exports.getMedia = async (req, res) => {
       title: translatedTitle ? String(translatedTitle) : seo.headline || fallbackTitle,
       overview: details.overview || '',
       posterUrl,
+      posterAlt:
+        String(mediaDoc?.posterAlt || '').trim() ||
+        (translatedTitle ? String(translatedTitle) : seo.headline || fallbackTitle),
       backdropUrl,
       releaseDate: details.release_date || details.first_air_date || null,
       voteAverage: details.vote_average || null,
@@ -102,6 +110,7 @@ exports.getMedia = async (req, res) => {
           : '',
       seo,
       similarSeo,
+      offers,
     });
   } catch (err) {
     const status = err.response?.status || 500;
@@ -161,9 +170,22 @@ exports.getSimilar = async (req, res) => {
     }
 
     const language = req.query.language || 'en-US';
+    const allGenreSlugs = [...new Set(rows.flatMap((row) => (Array.isArray(row.genreSlugs) ? row.genreSlugs : [])))];
+    let genreNameBySlug = {};
+    if (allGenreSlugs.length > 0) {
+      const genreDocs = await Genre.find({
+        siteKey: { $in: ['global', siteKey, 'default'] },
+        slug: { $in: allGenreSlugs },
+      })
+        .select('slug name')
+        .lean();
+      genreNameBySlug = Object.fromEntries(genreDocs.map((g) => [String(g.slug), String(g.name || '')]));
+    }
+
     const results = await Promise.all(
       rows.map(async (row) => {
-        let title = row.displayName;
+        const storedName = String(row.displayName || '').trim();
+        let title = storedName;
         let overview = '';
         let posterUrl = row.posterPath ? buildImageUrl(row.posterPath) : null;
         try {
@@ -171,12 +193,18 @@ exports.getSimilar = async (req, res) => {
             row.similarTmdbKind === 'movie'
               ? await tmdbService.getMovieDetails(row.similarTmdbId, language)
               : await tmdbService.getTVDetails(row.similarTmdbId, language);
-          title = d.title || d.name || title;
+          if (!storedName) {
+            title = d.title || d.name || title;
+          }
           overview = d.overview || '';
-          posterUrl = buildImageUrl(d.poster_path || row.posterPath);
+          if (!row.posterPath) {
+            posterUrl = buildImageUrl(d.poster_path);
+          }
         } catch {
           /* keep stored fields */
         }
+        const genreSlugs = Array.isArray(row.genreSlugs) ? row.genreSlugs.filter(Boolean) : [];
+        const tags = genreSlugs.map((slug) => genreNameBySlug[slug] || humanizeSlug(slug)).filter(Boolean);
         const vk = `${row.similarCategory}:${row.similarTmdbId}`;
         const stats = voteMap[vk] || { averageRating: 0, voteCount: 0 };
         return {
@@ -185,6 +213,9 @@ exports.getSimilar = async (req, res) => {
           title,
           overview,
           posterUrl,
+          posterAlt: String(row.posterAlt || '').trim() || title,
+          genreSlugs,
+          tags,
           similarityScore: 50,
           similarityVoteStats: stats,
           _curatedId: row._id,

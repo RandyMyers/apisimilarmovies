@@ -7,6 +7,7 @@ const translationSchema = new mongoose.Schema(
     language: { type: String, required: true, lowercase: true, trim: true },
     // Shown as the page headline in the public MediaDetail hero/header area.
     title: { type: String, default: '' },
+    focusKeyword: { type: String, default: '', trim: true },
     metaTitle: { type: String, default: '' },
     metaDescription: { type: String, default: '' },
     keywords: [{ type: String, trim: true }],
@@ -14,6 +15,15 @@ const translationSchema = new mongoose.Schema(
     content: { type: String, default: '' },
     canonicalPath: { type: String, default: '', trim: true },
     ogImage: { type: String, default: '', trim: true },
+    offers: [
+      {
+        imageUrl: { type: String, default: '', trim: true },
+        title: { type: String, default: '', trim: true },
+        description: { type: String, default: '', trim: true },
+        url: { type: String, default: '', trim: true },
+        buttonLabel: { type: String, default: 'View offer', trim: true },
+      },
+    ],
   },
   { _id: false },
 );
