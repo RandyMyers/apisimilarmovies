@@ -8,6 +8,7 @@ router.get('/media-detail-pages', sitemapDataController.getMediaDetailPagesForSi
 router.get('/static-pages', sitemapDataController.getStaticPagesForSitemap);
 router.get('/regions', sitemapDataController.getRegionsForSitemap);
 router.get('/site', sitemapDataController.getSiteForSitemap);
+router.get('/seo-settings', sitemapDataController.getSeoSettingsForSitemap);
 
 module.exports = router;
 

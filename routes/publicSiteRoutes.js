@@ -1,4 +1,5 @@
 const express = require('express');
+const { getPublicSettings } = require('../controllers/seoSettingsController');
 
 const router = express.Router();
 
@@ -28,5 +29,7 @@ router.get('/site-settings', (req, res) => {
     return res.status(500).json({ success: false, message: err.message || 'Failed to load site settings' });
   }
 });
+
+router.get('/seo-settings', getPublicSettings);
 
 module.exports = router;

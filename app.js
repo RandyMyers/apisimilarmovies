@@ -43,6 +43,7 @@ const adminOfferClickRoutes = require('./routes/adminOfferClickRoutes');
 const { requireSiteForAds } = require('./middleware/requireSiteForAds');
 const { parseAdContext } = require('./middleware/parseAdContext');
 const publicSiteRoutes = require('./routes/publicSiteRoutes');
+const adminSeoSettingsRoutes = require('./routes/adminSeoSettingsRoutes');
 const { startDailyRollupScheduler } = require('./services/adDailyRollupService');
 
 const app = express();
@@ -167,6 +168,7 @@ app.use('/api/v1/admin/ads/media', authenticateAdmin, authorizeRoles('moderator'
 app.use('/api/v1/admin/content/media', authenticateAdmin, authorizeRoles('editor'), adminContentMediaRoutes);
 app.use('/api/v1/admin/visitors', authenticateAdmin, authorizeRoles('moderator'), adminVisitorRoutes);
 app.use('/api/v1/admin/offer-clicks', authenticateAdmin, authorizeRoles('moderator'), adminOfferClickRoutes);
+app.use('/api/v1/admin', authenticateAdmin, authorizeRoles('editor'), adminSeoSettingsRoutes);
 
 // Central error handler (keep last)
 app.use(errorHandler);

@@ -6,6 +6,7 @@
 const MediaDetailSEO = require('../models/MediaDetailSEO');
 const Media = require('../models/Media');
 const Website = require('../models/Website');
+const { getPublicSettings } = require('./seoSettingsController');
 // Keep in sync with admin MediaManagement.jsx LANGUAGES[].countryCode (no br; not in admin sidebar).
 const DEFAULT_REGIONS = ['us', 'gb', 'au', 'ie', 'de', 'at', 'es', 'it', 'fr', 'pt', 'nl', 'no', 'fi', 'dk', 'se'];
 const DEFAULT_HREFLANG_MAP = {
@@ -133,6 +134,10 @@ exports.getRegionsForSitemap = async (_req, res) => {
 
 // GET /api/v1/sitemap-data/site
 // Public endpoint used by sitemap generation to resolve the base domain for the current X-Site.
+exports.getSeoSettingsForSitemap = async (req, res) => {
+  return getPublicSettings(req, res);
+};
+
 exports.getSiteForSitemap = async (req, res) => {
   try {
     const siteKey = req.siteKey || 'default';
