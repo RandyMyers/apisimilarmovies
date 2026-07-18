@@ -57,6 +57,10 @@ async function getTVDetails(tvId, options = 'en-US') {
   return request(`/tv/${tvId}`, params);
 }
 
+async function getTVSeason(tvId, seasonNumber, language = 'en-US') {
+  return request(`/tv/${tvId}/season/${seasonNumber}`, { language });
+}
+
 // Similar list
 async function getSimilarMovies(movieId, page = 1, language = 'en-US') {
   return request(`/movie/${movieId}/similar`, { page, language });
@@ -82,14 +86,35 @@ async function getTVGenres(language = 'en-US') {
   return request('/genre/tv/list', { language });
 }
 
+async function getConfigurationCountries(language = 'en-US') {
+  return request('/configuration/countries', { language });
+}
+
+async function getConfigurationLanguages(language = 'en-US') {
+  return request('/configuration/languages', { language });
+}
+
+async function getMovieCertifications() {
+  return request('/certification/movie/list');
+}
+
+async function getTVCertifications() {
+  return request('/certification/tv/list');
+}
+
 module.exports = {
   searchMulti,
   getMovieDetails,
   getTVDetails,
+  getTVSeason,
   getSimilarMovies,
   getSimilarTV,
   trendingMovies,
   trendingTV,
   getMovieGenres,
   getTVGenres,
+  getConfigurationCountries,
+  getConfigurationLanguages,
+  getMovieCertifications,
+  getTVCertifications,
 };

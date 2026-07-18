@@ -1,3 +1,18 @@
+const {
+  getCountryNameMap,
+  getLanguageNameMap,
+  getCertificationMaps,
+  lookupCertificationMeaning,
+} = require('./tmdbReferenceData');
+const {
+  localizeMediaStatus,
+  localizeTvType,
+  localizeCrewJob,
+  localizeVideoType,
+  formatCertification,
+} = require('./tmdbValueLocalize');
+const { localizeCertificationMeaning } = require('./tmdbCertificationLabels');
+
 function buildImageUrl(path, size = 'w500') {
   if (!path) return null;
   const p = String(path).trim();
@@ -17,14 +32,14 @@ function pickCertification(details, watchRegion, tmdbKind) {
   return country?.rating || null;
 }
 
-function normalizeVideos(details) {
+function normalizeVideos(details, language) {
   const results = details.videos?.results || [];
   const yt = results.filter((v) => v.site === 'YouTube' && v.key);
   const mapVideo = (v) => ({
     id: v.id,
     key: v.key,
     name: v.name || '',
-    type: v.type || '',
+    type: localizeVideoType(v.type, language) || v.type || '',
     url: `https://www.youtube.com/watch?v=${v.key}`,
   });
   return {
@@ -49,7 +64,7 @@ function normalizeWatchProviders(details, watchRegion) {
   };
 }
 
-function normalizeCredits(details, tmdbKind) {
+function normalizeCredits(details, tmdbKind, language) {
   const credits = tmdbKind === 'tv' ? details.aggregate_credits : details.credits;
   const cast = (credits?.cast || []).slice(0, 12).map((c) => ({
     id: c.id,
@@ -64,7 +79,7 @@ function normalizeCredits(details, tmdbKind) {
     .map((c) => ({
       id: c.id,
       name: c.name,
-      job: c.job,
+      job: localizeCrewJob(c.job, language) || c.job,
     }));
   return { cast, crew };
 }
@@ -101,8 +116,43 @@ function normalizeRecommendations(details) {
   }));
 }
 
-function normalizeMediaExtras(details, { watchRegion, tmdbKind }) {
+async function normalizeMediaExtras(details, { watchRegion, tmdbKind, language }) {
   const isMovie = tmdbKind === 'movie';
+  const lang = language || 'en-US';
+
+  const [countryMap, languageMap, certMaps] = await Promise.all([
+    getCountryNameMap(lang),
+    getLanguageNameMap(lang),
+    getCertificationMaps(),
+  ]);
+
+  const spokenLanguages = (details.spoken_languages || [])
+    .map((l) => {
+      if (l.iso_639_1 && languageMap[l.iso_639_1]) return languageMap[l.iso_639_1];
+      return l.name || l.english_name || '';
+    })
+    .filter(Boolean);
+
+  const productionCountries = (details.production_countries || [])
+    .map((c) => {
+      if (c.iso_3166_1 && countryMap[c.iso_3166_1]) return countryMap[c.iso_3166_1];
+      return c.name || '';
+    })
+    .filter(Boolean);
+
+  const certificationCode = pickCertification(details, watchRegion, tmdbKind);
+  const tmdbCertMeaning = lookupCertificationMeaning(
+    certMaps,
+    tmdbKind,
+    watchRegion,
+    certificationCode,
+  );
+  const certificationMeaning = localizeCertificationMeaning(
+    certificationCode,
+    lang,
+    tmdbCertMeaning,
+  );
+
   return {
     originalTitle: details.original_title || details.original_name || null,
     tagline: details.tagline || null,
@@ -111,16 +161,19 @@ function normalizeMediaExtras(details, { watchRegion, tmdbKind }) {
       !isMovie && Array.isArray(details.episode_run_time) ? details.episode_run_time[0] ?? null : null,
     numberOfSeasons: details.number_of_seasons ?? null,
     numberOfEpisodes: details.number_of_episodes ?? null,
-    status: details.status || null,
+    status: localizeMediaStatus(details.status, tmdbKind, lang),
+    statusRaw: details.status || null,
+    seriesType: !isMovie ? localizeTvType(details.type, lang) : null,
     inProduction: details.in_production ?? null,
     voteCount: details.vote_count ?? null,
     popularity: details.popularity ?? null,
-    spokenLanguages: (details.spoken_languages || []).map((l) => l.english_name || l.name).filter(Boolean),
-    productionCountries: (details.production_countries || []).map((c) => c.name).filter(Boolean),
+    spokenLanguages,
+    productionCountries,
     homepage: details.homepage || null,
-    certification: pickCertification(details, watchRegion, tmdbKind),
-    credits: normalizeCredits(details, tmdbKind),
-    videos: normalizeVideos(details),
+    certification: formatCertification(certificationCode, certificationMeaning),
+    certificationCode,
+    credits: normalizeCredits(details, tmdbKind, lang),
+    videos: normalizeVideos(details, lang),
     keywords: normalizeKeywords(details),
     externalIds: normalizeExternalIds(details),
     watchProviders: normalizeWatchProviders(details, watchRegion),

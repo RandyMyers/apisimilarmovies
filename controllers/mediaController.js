@@ -15,6 +15,7 @@ const {
   isDefaultEnglish,
 } = require('../utils/tmdbLocale');
 const { buildImageUrl, normalizeMediaExtras } = require('../utils/tmdbMediaNormalize');
+const { fetchTvSeasonsPayload } = require('../utils/tmdbSeasons');
 
 const FULL_DETAIL_TTL_MS = 12 * 60 * 60 * 1000;
 
@@ -131,7 +132,7 @@ exports.getMedia = async (req, res) => {
     const title = translatedTitle ? String(translatedTitle) : seo.headline || resolvedTitle;
     const posterUrl = buildImageUrl(details.poster_path, 'w500');
     const backdropUrl = buildImageUrl(details.backdrop_path, 'w780');
-    const extras = normalizeMediaExtras(details, { watchRegion, tmdbKind });
+    const extras = await normalizeMediaExtras(details, { watchRegion, tmdbKind, language });
 
     return res.json({
       category,
@@ -291,5 +292,25 @@ exports.getSimilar = async (req, res) => {
     return res.json({ base: { category, id: baseId }, results });
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Failed to load similar list' });
+  }
+};
+
+exports.getSeasons = async (req, res) => {
+  try {
+    const category = parseCategory(req.params.category);
+    const id = parseInt(req.params.id, 10);
+    if (!category || !Number.isFinite(id)) return res.status(400).json({ error: 'Invalid category or id' });
+
+    const tmdbKind = categoryToTmdbKind(category);
+    if (tmdbKind !== 'tv') {
+      return res.status(400).json({ error: 'Seasons are only available for TV series' });
+    }
+
+    const language = normalizeLanguage(req.query.language);
+    const payload = await fetchTvSeasonsPayload(id, language, { getCached, setCached });
+    return res.json({ category, id, ...payload });
+  } catch (err) {
+    const status = err.response?.status || 500;
+    return res.status(status === 404 ? 404 : 500).json({ error: err.message || 'Failed to load seasons' });
   }
 };
